@@ -68,6 +68,10 @@ class AuditLogger:
     ) -> None:
         """Append an entry in its own transaction (committed even if the caller rolls back)."""
         with self._lock, self._sf() as db:
+            if db.get_bind().dialect.name == "sqlite":
+                # Hold the write lock from reading the chain head until commit, so the server and a
+                # CLI command logging at the same moment cannot fork the chain.
+                db.connection().exec_driver_sql("BEGIN IMMEDIATE")
             last = db.execute(select(AuditLog).order_by(AuditLog.id.desc()).limit(1)).scalar_one_or_none()
             entry = AuditLog(
                 ts=utcnow().replace(microsecond=0),
@@ -81,8 +85,16 @@ class AuditLogger:
             )
             entry.hash = self._kr.audit_mac(_payload(entry))
             db.add(entry)
-            db.commit()
-            self._write_head(entry.id, entry.hash)
+            db.flush()
+            self._write_head(entry.id, entry.hash)  # still under the write lock: heads land in commit order
+            try:
+                db.commit()
+            except Exception:
+                if last is not None:
+                    self._write_head(last.id, last.hash)
+                else:
+                    self._head_file.unlink(missing_ok=True)
+                raise
 
     def verify(self, db: Session) -> VerifyResult:
         prev = GENESIS

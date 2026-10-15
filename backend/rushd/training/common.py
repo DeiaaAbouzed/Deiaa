@@ -19,6 +19,7 @@ PROMPT = (
 MIN_PIXELS = 256 * 28 * 28
 MAX_PIXELS = 1280 * 28 * 28
 BUNDLE_FORMAT = "rushd-lora-v1"
+MIN_TRAINING_SAMPLES = 50
 LORA_TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 
 

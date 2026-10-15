@@ -210,6 +210,26 @@ def test_monthly_budget_blocks_cloud(login, ctx):
     assert detail["status"] == "failed" and "الميزانية" in detail["error"]
 
 
+def test_manual_entry_when_the_ai_cannot_read(login, ctx):
+    """No internet or budget reached: the pharmacist types the drugs and still gets labels and safety checks."""
+    api = login("sara")
+    with ctx.sf() as db:
+        ctx.store.update(db, {"cloud_enabled": False}, None)
+        db.commit()
+    uid = upload(api, prescription_image(seed=23)).json()["uid"]
+    detail = api.get(f"/api/prescriptions/{uid}").json()
+    assert detail["status"] == "failed" and detail["can_verify"]
+    body = {"items": [{"brand": "Panadol", "strength": "500mg", "sig_text": "1x3"}, {"brand": "Congestal"}]}
+    response = api.post(f"/api/prescriptions/{uid}/verify", json=body)
+    assert response.status_code == 200, response.text
+    result = response.json()["verified_result"]
+    assert all(item["drug_id"] for item in result["items"]) and result["items"][0]["instructions_ar"]
+    assert any(w["type"] == "duplicate_ingredient" for w in result["warnings"])  # paracetamol twice
+    with ctx.sf() as db:
+        rx = db.query(Prescription).filter_by(uid=uid).one()
+        assert rx.status == "verified" and rx.acc_drug is None and rx.error == ""  # no AI reading, no AI score
+
+
 def test_listing_and_review_queue(login, ctx):
     pharmacist, trainer = login("sara"), login("mona", role="trainer")
     for seed in (31, 32):

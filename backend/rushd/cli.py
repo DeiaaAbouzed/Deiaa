@@ -317,6 +317,155 @@ def cmd_rotate_key(args) -> None:
     print("  ⚠ النسخ الاحتياطية القديمة تحتاج المفتاح القديم - احتفظ به في مكان آمن غير متصل.")
 
 
+_UNREADABLE = "error: لا توجد صلاحية لقراءة الملف - نفّذ chmod a+r على الملف قبل نسخه للحاوية"
+
+
+def _cli_user(db, username: str | None):
+    """The account CLI imports and training jobs are recorded under (default: the first active admin)."""
+    from .models import User
+
+    stmt = select(User).where(User.is_active.is_(True))
+    stmt = stmt.where(User.username == username.lower()) if username else stmt.where(User.role == "admin")
+    user = db.execute(stmt.order_by(User.id).limit(1)).scalar_one_or_none()
+    if user is None:
+        sys.exit("error: المستخدم غير موجود" if username else "error: لا يوجد مدير - شغّل init أولاً")
+    return user
+
+
+def cmd_import_dataset(args) -> None:
+    """Import images + labels.jsonl/csv from a ZIP on disk, without the web upload size limits."""
+    from .services.importer import Archive, ArchiveRejected, import_archive, new_batch
+    from .services.intake import MB
+
+    source = Path(args.archive)
+    if not source.is_file():
+        sys.exit("error: الملف غير موجود")
+
+    def progress(n: int) -> None:
+        if n % 100 == 0:
+            print(f"  ... {n} صورة", flush=True)
+
+    ctx = _context()
+    with ctx.sf() as db:
+        user = _cli_user(db, args.user)
+        try:
+            archive = Archive(source, ctx.settings.max_upload_mb * MB, max_entries=1_000_000, max_total=1 << 40)
+            batch = new_batch(db, args.name or source.name, "import", user.id)
+            outcome = import_archive(db, ctx, archive, user=user, batch_id=batch.id, progress=progress)
+        except ArchiveRejected as exc:
+            db.rollback()
+            sys.exit(f"error: {exc}")
+        except PermissionError:
+            db.rollback()
+            sys.exit(_UNREADABLE)
+        batch.total = outcome.verified + len(outcome.queued)
+        batch_id = batch.id
+        db.commit()
+    details = {"verified": outcome.verified, "queued": len(outcome.queued), "problems": len(outcome.problems)}
+    ctx.audit.record("archive_imported", username="cli", target=str(batch_id), details=details)
+    print(f"✓ أضيفت {outcome.verified} روشتة معتمدة للتدريب")
+    if outcome.queued:
+        print(f"  {len(outcome.queued)} صورة بدون تسميات ستُقرأ آلياً عند تشغيل الخادم")
+    for problem in outcome.problems[:20]:
+        print(f"  ⚠ {problem['file']}: {problem['error']}")
+
+
+def cmd_train(args) -> None:
+    """Train the local model in this process - e.g. on a rented GPU machine, without the web interface."""
+    from .models import ModelVersion, Prescription, TrainingJob
+    from .training.common import MIN_TRAINING_SAMPLES
+    from .training.local_engine import ml_stack_installed
+
+    if not ml_stack_installed():
+        sys.exit("error: مكتبات التدريب غير مثبتة - pip install -r requirements-train.txt")
+    from .training.train import Trainer, _finish
+
+    class ConsoleTrainer(Trainer):
+        def update(self, *, progress=None, message=None, **fields):
+            super().update(progress=progress, message=message, **fields)
+            if message:
+                print(f"[{(progress or 0) * 100:5.1f}%] {message}", flush=True)
+
+    ctx = _context()
+    with ctx.sf() as db:
+        samples = (
+            db.query(Prescription)
+            .filter(Prescription.status == "verified", Prescription.use_for_training.is_(True))
+            .count()
+        )
+        if samples < MIN_TRAINING_SAMPLES:
+            sys.exit(f"error: تحتاج {MIN_TRAINING_SAMPLES} روشتة معتمدة على الأقل (المتاح {samples})")
+        params = {
+            "epochs": args.epochs,
+            "base_model": args.base_model or ctx.settings.local_base_model,
+            "learning_rate": args.learning_rate,
+            "max_samples": args.max_samples,
+        }
+        job = TrainingJob(created_by=_cli_user(db, args.user).id, params=params, message="في الانتظار")
+        db.add(job)
+        db.commit()
+        job_id = job.id
+    ctx.audit.record("training_started", username="cli", target=str(job_id), details=params)
+    print(f"بدء التدريب #{job_id} على {samples} روشتة معتمدة ({params['base_model']})", flush=True)
+    try:
+        ConsoleTrainer(ctx, job_id).run()
+    except KeyboardInterrupt:
+        _finish(ctx, job_id, "cancelled", "تم إيقاف التدريب")
+        sys.exit("تم إيقاف التدريب")
+    except Exception as exc:
+        _finish(ctx, job_id, "failed", "فشل التدريب - راجع الرسائل أعلاه")
+        sys.exit(f"error: فشل التدريب: {exc}")
+    with ctx.sf() as db:
+        job = db.get(TrainingJob, job_id)
+        if job.status != "done":
+            sys.exit(f"error: {job.message}")
+        version = db.get(ModelVersion, job.model_version_id)
+        name, metrics = version.name, version.metrics
+    print(f"✓ {name}: دقة أسماء الأدوية {(metrics.get('acc_drug') or 0) * 100:.1f}% على روشتات لم يرها")
+    print(f"  للنقل لخادم آخر: python -m rushd export-model {name} <ملف.rushd>")
+
+
+def cmd_export_model(args) -> None:
+    from .training.transfer import TransferError, export_model
+
+    ctx = _context()
+    password = _password("كلمة مرور ملف النموذج (12 حرفاً على الأقل): ", confirm=True, env="RUSHD_EXPORT_PASSWORD")
+    if len(password) < 12:
+        sys.exit("error: كلمة المرور قصيرة")
+    try:
+        with ctx.sf() as db:
+            name = export_model(db, ctx, args.model, Path(args.output), password).name
+    except FileExistsError:
+        sys.exit("error: ملف الإخراج موجود بالفعل")
+    except TransferError as exc:
+        sys.exit(f"error: {exc}")
+    ctx.audit.record("model_exported", username="cli", target=name)
+    print(f"✓ تم تصدير {name} مشفراً إلى {args.output}")
+    print("  على الخادم الآخر: python -m rushd import-model <الملف>")
+
+
+def cmd_import_model(args) -> None:
+    from .training.export import ExportError
+    from .training.transfer import TransferError, import_model
+
+    source = Path(args.input)
+    if not source.is_file():
+        sys.exit("error: الملف غير موجود")
+    ctx = _context()
+    password = _password("كلمة مرور ملف النموذج: ", env="RUSHD_EXPORT_PASSWORD")
+    try:
+        with ctx.sf() as db:
+            version = import_model(db, ctx, source, password)
+            name, base = version.name, version.base_model
+    except (ExportError, TransferError) as exc:
+        sys.exit(f"error: {exc}")
+    except PermissionError:
+        sys.exit(_UNREADABLE)
+    ctx.audit.record("model_imported", username="cli", target=name, details={"base_model": base})
+    print(f"✓ تم استيراد النموذج باسم {name} (غير مُفعَّل)")
+    print("  راجع دقته في «مركز التدريب» ثم فعّله، واختر وضع القراءة من «الإعدادات».")
+
+
 def cmd_read(args) -> None:
     """Quick test: read one image with the cloud engine and print the result (nothing is stored)."""
     from .ai.engines import EngineError, ReadContext
@@ -395,6 +544,29 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("rotate-key", help="تدوير مفتاح التشفير الرئيسي")
     p.add_argument("--yes", action="store_true")
     p.set_defaults(func=cmd_rotate_key)
+
+    p = sub.add_parser("import-dataset", help="استيراد أرشيف روشتات مُعلَّمة (ZIP) من القرص")
+    p.add_argument("archive")
+    p.add_argument("--name", default="")
+    p.add_argument("--user", default=None, help="الحساب المسجَّل عليه الاستيراد (افتراضياً أول مدير)")
+    p.set_defaults(func=cmd_import_dataset)
+
+    p = sub.add_parser("train", help="تدريب النموذج المحلي من سطر الأوامر (يحتاج GPU)")
+    p.add_argument("--epochs", type=int, default=3, choices=range(1, 21), metavar="1-20")
+    p.add_argument("--learning-rate", type=float, default=2e-4)
+    p.add_argument("--max-samples", type=int, default=None)
+    p.add_argument("--base-model", default=None)
+    p.add_argument("--user", default=None)
+    p.set_defaults(func=cmd_train)
+
+    p = sub.add_parser("export-model", help="تصدير نموذج مدرَّب (مشفر بكلمة مرور) لنقله لخادم آخر")
+    p.add_argument("model", help="اسم النموذج أو رقمه")
+    p.add_argument("output")
+    p.set_defaults(func=cmd_export_model)
+
+    p = sub.add_parser("import-model", help="استيراد نموذج مدرَّب على خادم آخر")
+    p.add_argument("input")
+    p.set_defaults(func=cmd_import_model)
 
     p = sub.add_parser("read", help="تجربة قراءة صورة روشتة (لا يتم حفظ شيء)")
     p.add_argument("image")

@@ -17,12 +17,11 @@ from ..models import ModelVersion, Prescription, TrainingJob
 from ..security.deps import ADMIN, MANAGERS, Principal, get_ctx, get_db, require_roles
 from ..services import stats
 from ..services.accounts import verify_step_up
+from ..training.common import MIN_TRAINING_SAMPLES
 from ..training.export import EncryptingWriter
 from .errors import ApiError
 
 router = APIRouter(prefix="/api/training", tags=["training"])
-
-MIN_TRAINING_SAMPLES = 50
 
 
 class StepUp(BaseModel):

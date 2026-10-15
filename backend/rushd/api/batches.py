@@ -6,27 +6,16 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from ..ai import memory
-from ..ai.postprocess import RESULT_VERSION
-from ..ai.safety import check
-from ..db import utcnow
 from ..imaging import ImageRejected
 from ..models import Batch, Prescription, User
 from ..security.deps import MANAGERS, STAFF, Principal, get_ctx, get_db, require_roles
-from ..services.importer import Archive, ArchiveRejected
+from ..services import importer
+from ..services.importer import Archive, ArchiveRejected, new_batch
 from ..services.intake import MB, find_duplicate, ingest_image
-from ..services.verification import build_verified_items
 from ..services.worker import PRIORITY_BULK
 from .errors import ApiError
 
 router = APIRouter(prefix="/api", tags=["batches"])
-
-
-def _new_batch(db: Session, name: str, kind: str, user_id: int) -> Batch:
-    batch = Batch(name=(name.strip() or f"دفعة {utcnow():%Y-%m-%d %H:%M}")[:160], kind=kind, created_by=user_id)
-    db.add(batch)
-    db.flush()
-    return batch
 
 
 @router.post("/batches", status_code=202)
@@ -39,7 +28,7 @@ def upload_batch(
 ):
     if len(files) > ctx.settings.max_batch_files:
         raise ApiError(400, f"الحد الأقصى {ctx.settings.max_batch_files} صورة في الدفعة الواحدة")
-    batch = _new_batch(db, name, "prelabel", p.id)
+    batch = new_batch(db, name, "prelabel", p.id)
     accepted: list[int] = []
     rejected: list[dict] = []
     for upload in files:
@@ -80,94 +69,29 @@ def import_archive(
     data = archive.file.read(ctx.settings.max_bulk_body_mb * MB + 1)
     try:
         zipped = Archive(data, ctx.settings.max_upload_mb * MB)
-    except ArchiveRejected as exc:
-        raise ApiError(400, str(exc)) from exc
-    batch = _new_batch(db, name or (archive.filename or ""), "import", p.id)
-    class_map = ctx.class_map()
-    verified = queued = 0
-    to_read: list[int] = []
-    problems: list[dict] = []
-    try:
-        for image in zipped.images():
-            if find_duplicate(db, ctx, image.data) is not None:
-                problems.append({"file": image.name, "error": "مرفوعة من قبل"})
-                continue
-            labelled = bool(image.items)
-            try:
-                rx = ingest_image(
-                    db,
-                    ctx,
-                    image.data,
-                    user=p.user,
-                    source="import",
-                    priority=PRIORITY_BULK,
-                    batch_id=batch.id,
-                    status="verified" if labelled else "queued",
-                )
-            except ImageRejected as exc:
-                problems.append({"file": image.name, "error": str(exc)})
-                continue
-            if not labelled:
-                to_read.append(rx.id)
-                queued += 1
-                continue
-            items = build_verified_items(db, ctx, image.items, add_unknown=True)
-            doctor = None
-            if (image.doctor.get("name") or "").strip():
-                doctor = memory.find_or_create_doctor(
-                    db,
-                    image.doctor["name"],
-                    image.doctor.get("specialty", ""),
-                    image.doctor.get("clinic", ""),
-                    image.doctor.get("phone", ""),
-                )
-                for item in items:
-                    if item["drug_id"]:
-                        memory.bump_doctor_drug(db, doctor.id, item["drug_id"])
-                doctor.verified_count += 1
-                doctor.last_seen_at = utcnow()
-            result = {
-                "version": RESULT_VERSION,
-                "is_prescription": True,
-                "doctor": {
-                    "name": doctor.name if doctor else None,
-                    "specialty": doctor.specialty if doctor else None,
-                    "clinic": None,
-                    "phone": None,
-                },
-                "patient": {"name": None, "age": None},
-                "date": None,
-                "diagnosis": None,
-                "notes": "",
-                "items": items,
-                "warnings": check(items, class_map),
-                "verified_by": p.user.username,
-            }
-            rx.verified_result_enc = ctx.keyring.encrypt_json(result, f"verified:{rx.uid}")
-            rx.doctor_id = doctor.id if doctor else None
-            rx.doctor_confirmed = doctor is not None
-            rx.num_items = len(items)
-            rx.verified_at = utcnow()
-            rx.verified_by = p.id
-            verified += 1
-            db.flush()
+        batch = new_batch(db, name or (archive.filename or ""), "import", p.id)
+        outcome = importer.import_archive(db, ctx, zipped, user=p.user, batch_id=batch.id)
     except ArchiveRejected as exc:
         db.rollback()
         raise ApiError(400, str(exc)) from exc
-    batch.total = verified + queued
+    batch.total = outcome.verified + len(outcome.queued)
     db.commit()
-    problems.extend(zipped.problems)
     ctx.audit.record(
         "archive_imported",
         user_id=p.id,
         username=p.user.username,
         ip=p.ip,
         target=str(batch.id),
-        details={"verified": verified, "queued": queued, "problems": len(problems)},
+        details={"verified": outcome.verified, "queued": len(outcome.queued), "problems": len(outcome.problems)},
     )
-    for rx_id in to_read:
+    for rx_id in outcome.queued:
         ctx.worker.submit(rx_id, PRIORITY_BULK)
-    return {"batch_id": batch.id, "verified": verified, "queued": queued, "problems": problems[:200]}
+    return {
+        "batch_id": batch.id,
+        "verified": outcome.verified,
+        "queued": len(outcome.queued),
+        "problems": outcome.problems[:200],
+    }
 
 
 @router.get("/batches")

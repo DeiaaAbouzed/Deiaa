@@ -123,6 +123,7 @@ def verify(db: Session, ctx, rx: Prescription, body: dict, user, ip: str, *, can
         rx.doctor_confirmed = True
     rx.num_items = len(items)
     rx.status = "verified"
+    rx.error = ""  # a failed reading that was typed in manually
     rx.verified_at = utcnow()
     rx.verified_by = user.id
     rx.use_for_training = bool(body.get("use_for_training", True))

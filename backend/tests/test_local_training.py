@@ -10,10 +10,12 @@ pytest.importorskip("transformers")
 pytest.importorskip("peft")
 pytest.importorskip("torchvision")
 
+from rushd.cli import main  # noqa: E402
 from rushd.main import create_app  # noqa: E402
 from rushd.models import ModelVersion, Prescription, TrainingJob  # noqa: E402
 from rushd.training.common import PROMPT, target_text  # noqa: E402
 from rushd.training.train import Trainer  # noqa: E402
+from rushd.training.transfer import export_model, import_model  # noqa: E402
 
 from .conftest import (  # noqa: E402
     PASSWORD,
@@ -97,3 +99,42 @@ def test_shadow_mode_measures_local_model(trained):
     with ctx.sf() as db:
         rx = db.query(Prescription).filter_by(uid=uid).one()
         assert rx.shadow_acc_drug == 1.0
+
+
+def test_trained_model_survives_export_and_import(trained, tmp_path):
+    """A real adapter passes import validation and still reads offline after the round trip."""
+    app, ctx, api, _ = trained
+    with ctx.sf() as db:
+        original = db.query(ModelVersion).one()
+        export_model(db, ctx, original.name, tmp_path / "model.rushd", "Model-Pass-2026")
+        imported = import_model(db, ctx, tmp_path / "model.rushd", "Model-Pass-2026")
+        assert imported.metrics["acc_drug"] == original.metrics["acc_drug"]
+    assert api.post(f"/api/training/models/{imported.id}/activate", json={"password": PASSWORD}).status_code == 200
+    api.put("/api/settings", json={"changes": {"engine_mode": "local"}})
+    uid = upload(api, prescription_image(seed=997)).json()["uid"]
+    detail = api.get(f"/api/prescriptions/{uid}").json()
+    assert detail["engine"] == "local" and detail["ai_result"]["items"][0]["brand"] == "Augmentin"
+    with ctx.sf() as db:
+        assert db.query(Prescription).filter_by(uid=uid).one().engine_model == imported.name
+
+
+def test_headless_training_from_the_command_line(trained, monkeypatch, capsys):
+    app, ctx, api, _ = trained
+    s = ctx.settings
+    env = {
+        "RUSHD_DATA_DIR": s.data_dir,
+        "RUSHD_SECRETS_DIR": s.secrets_dir,
+        "RUSHD_MASTER_KEY": s.master_key.get_secret_value(),
+        "RUSHD_LOCAL_BASE_MODEL": s.local_base_model,
+        "RUSHD_LOCAL_DEVICE": "cpu",
+        "RUSHD_WORKER_THREADS": "0",
+    }
+    for key, value in env.items():
+        monkeypatch.setenv(key, str(value))
+    monkeypatch.setattr("rushd.training.common.MIN_TRAINING_SAMPLES", 5)
+    main(["train", "--epochs", "2", "--learning-rate", "0.01"])
+    out = capsys.readouterr().out
+    assert "rushd-local-v2" in out and "export-model" in out
+    with ctx.sf() as db:
+        assert db.query(ModelVersion).count() == 2
+        assert db.query(TrainingJob).order_by(TrainingJob.id.desc()).first().status == "done"

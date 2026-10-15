@@ -48,7 +48,13 @@ def handwritten(font_path: str | None, seed: int) -> bytes:
     try:
         title = ImageFont.truetype(os.environ.get("RUSHD_E2E_ARABIC_FONT", ""), 44)
         d.text((950, 40), "د. أحمد علي", font=title, fill=(15, 50, 80), anchor="ra")
-        d.text((950, 110), "استشاري الأمراض الباطنة", font=ImageFont.truetype(os.environ["RUSHD_E2E_ARABIC_FONT"], 30), fill=(40, 70, 90), anchor="ra")
+        d.text(
+            (950, 110),
+            "استشاري الأمراض الباطنة",
+            font=ImageFont.truetype(os.environ["RUSHD_E2E_ARABIC_FONT"], 30),
+            fill=(40, 70, 90),
+            anchor="ra",
+        )
     except (OSError, KeyError):
         d.text((60, 60), "Dr. Ahmed Ali - Internal Medicine", fill=(15, 50, 80))
     d.text((60, 160), "Tel: 0100 123 4567", fill=(40, 70, 90))
@@ -91,7 +97,15 @@ def seed(app, font: str | None) -> None:
             ("sara", "pharmacist", "سارة محمود"),
             ("tamer", "trainee", "تامر سعيد"),
         ]:
-            db.add(User(username=username, full_name=name, role=role, password_hash=hash_password(PASSWORD), must_change_password=False))
+            db.add(
+                User(
+                    username=username,
+                    full_name=name,
+                    role=role,
+                    password_hash=hash_password(PASSWORD),
+                    must_change_password=False,
+                )
+            )
         db.commit()
         trainer = db.query(User).filter_by(username="mona").one()
         reader = ctx.worker.reader
@@ -103,11 +117,46 @@ def seed(app, font: str | None) -> None:
                 reader.process(rx.id)
                 db.refresh(rx)
                 items = [
-                    {"brand": "Augmentin", "strength": "1g", "form": "tablet", "sig_text": "1x2 p.c 7 days", "times_per_day": 2, "timing": "after_meal", "duration_days": 7, "ai_index": 0},
-                    {"brand": "Panadol", "strength": "500mg", "form": "tablet", "sig_text": "1x3 prn", "prn": True, "times_per_day": 3, "ai_index": 1},
-                    {"brand": "Comtrex Max" if week < 3 else "Congestal", "form": "tablet", "sig_text": "1x3", "times_per_day": 3, "ai_index": 2},
+                    {
+                        "brand": "Augmentin",
+                        "strength": "1g",
+                        "form": "tablet",
+                        "sig_text": "1x2 p.c 7 days",
+                        "times_per_day": 2,
+                        "timing": "after_meal",
+                        "duration_days": 7,
+                        "ai_index": 0,
+                    },
+                    {
+                        "brand": "Panadol",
+                        "strength": "500mg",
+                        "form": "tablet",
+                        "sig_text": "1x3 prn",
+                        "prn": True,
+                        "times_per_day": 3,
+                        "ai_index": 1,
+                    },
+                    {
+                        "brand": "Comtrex Max" if week < 3 else "Congestal",
+                        "form": "tablet",
+                        "sig_text": "1x3",
+                        "times_per_day": 3,
+                        "ai_index": 2,
+                    },
                 ]
-                verify(db, ctx, rx, {"items": items, "doctor": {"name": "د. أحمد علي", "specialty": "باطنة"}, "academy_approved": n == 0}, trainer, "127.0.0.1", can_approve_academy=True)
+                verify(
+                    db,
+                    ctx,
+                    rx,
+                    {
+                        "items": items,
+                        "doctor": {"name": "د. أحمد علي", "specialty": "باطنة"},
+                        "academy_approved": n == 0,
+                    },
+                    trainer,
+                    "127.0.0.1",
+                    can_approve_academy=True,
+                )
                 rx = db.get(Prescription, rx.id)
                 rx.verified_at = now - timedelta(weeks=9 - week, days=n)
                 rx.acc_drug = min(1.0, 0.58 + week * 0.045 + n * 0.01)

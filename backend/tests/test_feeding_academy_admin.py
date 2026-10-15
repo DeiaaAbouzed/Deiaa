@@ -2,12 +2,14 @@
 
 import io
 import json
+import threading
 import zipfile
 
+from rushd.context import build_context
 from rushd.models import AuditLog, Doctor, Prescription
 from rushd.training.export import ExportError, decrypt_stream
 
-from .conftest import PASSWORD, prescription_image, upload
+from .conftest import PASSWORD, make_settings, prescription_image, upload
 
 
 def _zip(entries: dict[str, bytes]) -> bytes:
@@ -215,6 +217,28 @@ def test_audit_detects_deleted_rows(login, ctx):
         db.commit()
     with ctx.sf() as db:
         assert ctx.audit.verify(db).ok is False
+
+
+def test_audit_chain_survives_concurrent_writers(tmp_path):
+    """The server and a CLI command (separate connections and loggers) writing at the same moment."""
+    settings = make_settings(tmp_path)
+    server, cli = build_context(settings), build_context(settings)
+    start = threading.Barrier(2)
+
+    def burst(ctx, who):
+        start.wait()
+        for i in range(60):
+            ctx.audit.record("concurrency_probe", username=who, target=str(i))
+
+    threads = [threading.Thread(target=burst, args=pair) for pair in ((server, "server"), (cli, "cli"))]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    with server.sf() as db:
+        assert db.query(AuditLog).filter_by(action="concurrency_probe").count() == 120
+        result = server.audit.verify(db)
+        assert result.ok, result
 
 
 def test_dataset_export_requires_step_up_and_is_encrypted(login, ctx):

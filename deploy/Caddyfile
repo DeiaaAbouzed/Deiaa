@@ -1,0 +1,23 @@
+# HTTPS in front of رُشد. With a public domain, Caddy obtains and renews a free
+# Let's Encrypt certificate automatically. For a pharmacy LAN without a domain,
+# set RUSHD_DOMAIN to the server's name/IP and add "tls internal" below.
+{$RUSHD_DOMAIN} {
+	# Never compress API responses (they carry session-bound secrets).
+	@static not path /api/*
+	encode @static zstd gzip
+
+	request_body {
+		max_size 420MB
+	}
+
+	reverse_proxy rushd:8000
+
+	header {
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

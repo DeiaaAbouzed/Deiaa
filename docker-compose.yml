@@ -1,0 +1,46 @@
+# رُشد - production deployment: the app is never exposed directly; Caddy terminates HTTPS.
+#   1) cp .env.example .env   and fill RUSHD_DOMAIN + ANTHROPIC_API_KEY
+#   2) docker compose up -d --build
+#   3) docker compose logs rushd   -> one-time admin password (first start only)
+services:
+  rushd:
+    build: .
+    image: rushd:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      RUSHD_COOKIE_SECURE: "true"
+      RUSHD_ALLOWED_HOSTS: '["${RUSHD_DOMAIN:-localhost}", "127.0.0.1", "localhost"]'
+    volumes:
+      - rushd-data:/data          # encrypted images, database, encrypted models
+      - rushd-secrets:/secrets    # master key - kept apart from the data on purpose
+    tmpfs:
+      - /tmp:size=1g,mode=1777    # uploads never touch a real disk unencrypted
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [internal]
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      RUSHD_DOMAIN: ${RUSHD_DOMAIN:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [rushd]
+    networks: [internal]
+
+volumes:
+  rushd-data:
+  rushd-secrets:
+  caddy-data:
+  caddy-config:
+
+networks:
+  internal:

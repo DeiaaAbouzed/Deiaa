@@ -140,6 +140,8 @@ export const AUDIT_ACTIONS = {
   model_activated: 'تفعيل نموذج',
   model_deactivated: 'إيقاف النموذج المحلي',
   dataset_exported: 'تصدير بيانات التدريب',
+  model_exported: 'تصدير نموذج محلي',
+  model_imported: 'استيراد نموذج محلي',
   settings_changed: 'تغيير الإعدادات',
   audit_verified: 'فحص سجل الأمان',
 };

@@ -1,0 +1,17 @@
+# Optional: run رُشد with the offline-model stack on an NVIDIA GPU host (training + local reading).
+# Needs the NVIDIA driver and the NVIDIA Container Toolkit on the host. Use it on top of the main file:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+services:
+  rushd:
+    build:
+      context: .
+      args:
+        WITH_TRAINING: "true"
+    image: rushd:gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

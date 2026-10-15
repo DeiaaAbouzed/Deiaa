@@ -90,6 +90,15 @@ export async function renderPrescription(container, uid, { onFinished = null, re
               }
             },
           }),
+          detail.can_verify
+            ? button('إدخال يدوي', {
+                iconName: 'pencil',
+                onClick: () => {
+                  editor = prescriptionEditor(detail, { onDone: finish, reviewInfo });
+                  mount(container, pageHead('إدخال يدوي', 'اكتب الأدوية من الصورة - ستحصل على الملصقات العربية وتنبيهات الأمان كالمعتاد'), editor.element);
+                },
+              })
+            : null,
           button('قراءة روشتة أخرى', { iconName: 'camera', onClick: () => navigate('read') }),
         ),
       );

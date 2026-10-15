@@ -1,0 +1,9 @@
+# Optional: training and running the pharmacy's own offline model.
+# Needs a machine with an NVIDIA GPU (12 GB+ VRAM recommended) for practical speed.
+-r requirements.txt
+torch==2.14.1
+torchvision==0.29.1
+transformers==5.19.0
+peft==0.21.2
+accelerate==1.15.0
+safetensors==0.8.0

@@ -1,0 +1,13 @@
+.git
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+data
+secrets
+.env
+.env.*
+*.rushd
+*.backup
+backend/tests
+docs

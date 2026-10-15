@@ -209,7 +209,7 @@ def get_prescription(
     data["academy_approved"] = rx.academy_approved
     data["passes"] = rx.passes
     data["cost_usd"] = round(rx.cost_usd, 4) if p.role in MANAGERS else None
-    data["can_verify"] = rx.status in ("needs_review", "verified", "rejected") and (
+    data["can_verify"] = rx.status in ("needs_review", "verified", "rejected", "failed") and (
         p.role in MANAGERS or (rx.uploaded_by == p.id and rx.status != "verified")
     )
     if rx.uploaded_by != p.id and rx.status in ("needs_review", "verified"):
@@ -239,7 +239,7 @@ def verify_prescription(
     db: Session = Depends(get_db),
 ):
     rx = load_rx(db, uid, p)
-    if rx.status not in ("needs_review", "verified", "rejected"):
+    if rx.status not in ("needs_review", "verified", "rejected", "failed"):  # failed: typed in manually
         raise ApiError(409, "لا يمكن اعتماد الروشتة قبل انتهاء القراءة")
     if rx.status == "verified" and p.role not in MANAGERS:
         raise ApiError(403, "تعديل روشتة معتمدة متاح للمدرب أو المدير فقط")
