@@ -52,10 +52,32 @@ def cmd_init(args) -> None:
         if db.execute(select(User.id).limit(1)).first():
             print("✓ يوجد مستخدمون بالفعل - لم يتم إنشاء مدير جديد.")
             return
-    _create_user(ctx, args.admin_username or "admin", "admin", "مدير النظام", print_password=True)
+    username = args.admin_username or "admin"
+    temporary = _create_user(ctx, username, "admin", "مدير النظام", print_password=True)
+    if args.credentials_file:
+        _write_credentials(Path(args.credentials_file), username, temporary, settings)
 
 
-def _create_user(ctx, username: str, role: str, full_name: str, print_password: bool) -> None:
+def _write_credentials(path: Path, username: str, temporary: str, settings: Settings) -> None:
+    """First-run note for the desktop app: Arabic reads well in Notepad, not in a Windows console."""
+    text = (
+        "رُشد - بيانات الدخول الأولى\n"
+        "==========================\n\n"
+        f"اسم المستخدم: {username}\n"
+        f"كلمة المرور المؤقتة: {temporary}\n\n"
+        "سيُطلب منك تغييرها عند أول دخول، ثم تفعيل التحقق بخطوتين بتطبيق مثل Google Authenticator.\n"
+        "احذف هذا الملف بعد أول دخول.\n\n"
+        f"مكان بياناتك (مشفرة): {settings.data_dir}\n"
+        f"المفتاح الرئيسي: {settings.key_file}\n"
+        "مهم جداً: انسخ المفتاح الرئيسي على فلاشة واحفظها في مكان آمن - بدونه لا يمكن استرجاع أي بيانات.\n"
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8-sig", newline="\r\n") as fh:
+        fh.write(text)
+
+
+def _create_user(ctx, username: str, role: str, full_name: str, print_password: bool) -> str:
     from .models import User
     from .security.passwords import generate_temporary_password, hash_password
 
@@ -79,6 +101,7 @@ def _create_user(ctx, username: str, role: str, full_name: str, print_password: 
         print(f"✓ تم إنشاء المستخدم «{username}» بدور {role}")
         print(f"  كلمة المرور المؤقتة (تظهر مرة واحدة فقط): {temporary}")
         print("  سيُطلب تغييرها عند أول دخول" + (" ثم تفعيل التحقق بخطوتين." if role == "admin" else "."))
+    return temporary
 
 
 def cmd_create_user(args) -> None:
@@ -501,6 +524,7 @@ def main(argv: list[str] | None = None) -> None:
 
     p = sub.add_parser("init", help="إنشاء مفتاح التشفير وقاعدة البيانات وأول مدير")
     p.add_argument("--admin-username", default="admin")
+    p.add_argument("--credentials-file", default=None, help="اكتب كلمة مرور المدير المؤقتة في هذا الملف أيضاً")
     p.set_defaults(func=cmd_init)
 
     p = sub.add_parser("serve", help="تشغيل الخادم")

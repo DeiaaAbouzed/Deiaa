@@ -53,7 +53,15 @@ flowchart LR
 
 ## التشغيل
 
-### ١) تجربة سريعة على جهازك (بدون إنترنت عام)
+### ١) نسخة ويندوز جاهزة — بدون تثبيت أي شيء
+
+- حمّل الملف `Rushd-Windows-1.0.0.zip` وفك ضغطه في مكان ثابت (مثلاً المستندات).
+- اضغط مرتين على **`Start-Rushd`**: يفتح رُشد في نافذة خاصة به، وفي أول مرة يفتح ملف فيه كلمة مرور المدير المؤقتة.
+- **للموبايلات داخل الصيدلية**: شغّل **`Share-with-phones`** بدلاً منه، وامسح رمز QR الذي يظهر بكاميرا الموبايل (نفس الواي فاي).
+- البيانات مشفرة في `%LOCALAPPDATA%\Rushd` خارج مجلد البرنامج، فالتحديث لنسخة أحدث لا يمس بياناتك. التفاصيل في `README-AR.txt` داخل الملف.
+- ويندوز 10 أو 11 (64 بت). لبناء الملف من الكود: `python desktop/build_windows.py`.
+
+### ١-ب) تجربة من الكود مباشرة (للمطورين)
 
 يحتاج Python 3.11 أو أحدث.
 
@@ -152,6 +160,7 @@ backend/rushd/
   cli.py       init · serve · backup/restore · rotate-key · verify-audit · import-drugs · read
                import-dataset · train · export-model/import-model (headless GPU training)
 frontend/      Arabic RTL PWA (index.html, css/, js/lib, js/components, js/views)
+desktop/       Windows package: bundled CPython (NuGet, SHA-512 checked) + launcher; build_windows.py
 ```
 
 ```bash

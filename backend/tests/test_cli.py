@@ -53,6 +53,18 @@ def _check_readable(uid):
     return ctx
 
 
+def test_init_can_write_first_run_credentials(env, capsys):
+    note = env / "first-run.txt"
+    main(["init", "--credentials-file", str(note)])
+    password = capsys.readouterr().out.split("(تظهر مرة واحدة فقط): ")[1].split()[0]
+    text = note.read_text(encoding="utf-8-sig")
+    assert f"كلمة المرور المؤقتة: {password}" in text and "admin" in text
+    assert note.read_bytes().startswith(b"\xef\xbb\xbf")  # BOM: Notepad shows the Arabic correctly
+    assert note.stat().st_mode & 0o077 == 0
+    main(["init", "--credentials-file", str(env / "again.txt")])
+    assert not (env / "again.txt").exists()  # only the very first run creates an admin
+
+
 def test_init_is_idempotent(env, capsys):
     main(["init"])
     first = capsys.readouterr().out

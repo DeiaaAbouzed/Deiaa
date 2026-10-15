@@ -1,0 +1,17 @@
+# The same pinned runtime as backend/requirements.txt, for the Windows desktop package.
+# uvicorn without [standard]: those extras include uvloop (no Windows build) and file
+# watchers the desktop app does not need; colorama is what click uses on Windows consoles.
+fastapi==0.143.1
+uvicorn==0.54.0
+colorama==0.4.6
+SQLAlchemy==2.1.4
+pydantic==2.14.1
+pydantic-settings==2.16.0
+argon2-cffi==25.1.0
+cryptography==50.0.2
+pyotp==2.10.0
+qrcode==8.2
+pillow==12.3.0
+rapidfuzz==3.14.6
+anthropic==1.14.0
+python-multipart==0.0.32
