@@ -73,6 +73,6 @@ def build_context(settings: Settings, *, claude_client=None) -> AppContext:
         audit=AuditLogger(sf, keyring, settings.data_dir / "audit.head"),
         limiter=RateLimiter(),
         store=SettingsStore(settings),
-        lexicon=LexiconCache(drug_service.loader(sf)),
+        lexicon=LexiconCache(drug_service.loader(sf), drug_service.fingerprint(sf)),
         claude=claude,
     )

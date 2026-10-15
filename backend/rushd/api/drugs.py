@@ -136,6 +136,7 @@ def deactivate_drug(
     if drug is None:
         raise ApiError(404, "الدواء غير موجود")
     drug.is_active = False
+    drug.updated_at = utcnow()
     db.commit()
     ctx.drugs_changed()
     ctx.audit.record("drug_deactivated", user_id=p.id, username=p.user.username, ip=p.ip, target=drug.brand)

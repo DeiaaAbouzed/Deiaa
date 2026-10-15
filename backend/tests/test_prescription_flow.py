@@ -95,6 +95,12 @@ def test_verify_teaches_the_system(login, ctx, fake_claude):
     # A pharmacist cannot silently rewrite a verified prescription.
     assert api.post(f"/api/prescriptions/{uid}/verify", json=body).status_code == 403
 
+    # The drug learned in that (just committed) transaction is used on the very next reading.
+    uid2 = upload(api, prescription_image(seed=77)).json()["uid"]
+    third = api.get(f"/api/prescriptions/{uid2}").json()["ai_result"]["items"][2]
+    assert third["brand"] == "Comtrex Max" and third["drug_id"] == learned.id
+    assert "learned_correction" in third["flags"] and "not_in_database" not in third["flags"]
+
 
 def test_second_prescription_from_known_doctor_uses_examples(login, ctx, fake_claude):
     api = login("sara")

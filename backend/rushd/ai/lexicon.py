@@ -125,13 +125,20 @@ class Lexicon:
 
 
 class LexiconCache:
-    """Rebuilds the in-memory lexicon only when the drug table changes."""
+    """Rebuilds the in-memory lexicon only when the drug table changes.
 
-    def __init__(self, loader):
+    ``fingerprint`` is a cheap query over the drug table; comparing it on each
+    access catches changes committed by other transactions or processes (an
+    explicit invalidate() alone can run before the change is committed).
+    """
+
+    def __init__(self, loader, fingerprint=None):
         self._loader = loader
+        self._fingerprint = fingerprint
         self._lock = threading.Lock()
         self._version = 0
         self._built_version = -1
+        self._built_fingerprint = None
         self._lexicon: Lexicon | None = None
 
     def invalidate(self) -> None:
@@ -139,8 +146,10 @@ class LexiconCache:
             self._version += 1
 
     def get(self) -> Lexicon:
+        current = self._fingerprint() if self._fingerprint else None
         with self._lock:
-            if self._lexicon is None or self._built_version != self._version:
+            if self._lexicon is None or self._built_version != self._version or current != self._built_fingerprint:
                 self._lexicon = Lexicon(self._loader())
                 self._built_version = self._version
+                self._built_fingerprint = current
             return self._lexicon

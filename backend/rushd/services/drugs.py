@@ -6,7 +6,7 @@ import csv
 import io
 from importlib import resources
 
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..ai.lexicon import DrugRecord
@@ -43,6 +43,18 @@ def loader(session_factory: sessionmaker):
             return [to_record(d) for d in rows]
 
     return load
+
+
+def fingerprint(session_factory: sessionmaker):
+    def current() -> tuple:
+        with session_factory() as db:
+            return tuple(
+                db.execute(
+                    select(func.count(Drug.id), func.max(Drug.updated_at), func.sum(case((Drug.is_active, 1), else_=0)))
+                ).one()
+            )
+
+    return current
 
 
 def upsert(db: Session, row: dict, source: str) -> tuple[Drug | None, bool]:

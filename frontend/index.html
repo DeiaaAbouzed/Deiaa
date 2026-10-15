@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>رُشد - قارئ الروشتات الذكي</title>
+    <meta name="description" content="قارئ ذكي وآمن للروشتات المكتوبة بخط اليد، يتعلم من صيدلياتك." />
+    <meta name="theme-color" content="#00796e" />
+    <meta name="referrer" content="no-referrer" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/img/logo.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/img/icon-192.png" />
+    <link rel="stylesheet" href="/css/fonts.css" />
+    <link rel="stylesheet" href="/css/app.css" />
+    <script type="module" src="/js/app.js"></script>
+  </head>
+  <body>
+    <div id="root">
+      <div class="loading-block"><span class="spinner" aria-label="جاري التحميل"></span></div>
+    </div>
+    <div id="toasts" aria-live="polite" aria-atomic="true"></div>
+    <div id="print-area" aria-hidden="true"></div>
+    <noscript>
+      <p class="empty">يحتاج هذا التطبيق إلى تفعيل JavaScript في المتصفح.</p>
+    </noscript>
+  </body>
+</html>
