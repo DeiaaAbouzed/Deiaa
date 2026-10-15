@@ -102,3 +102,9 @@ STAFF = ("admin", "trainer", "pharmacist")
 MANAGERS = ("admin", "trainer")
 ADMIN = ("admin",)
 EVERYONE = ("admin", "trainer", "pharmacist", "trainee")
+
+
+def ensure_recent_step_up(ctx, principal: Principal) -> None:
+    """Account administration: the password (and 2FA code) must have been re-entered recently."""
+    if not ctx.step_up.active(principal.session.id):
+        raise ApiError(403, "أكّد هويتك بكلمة المرور للمتابعة", "step_up_required")

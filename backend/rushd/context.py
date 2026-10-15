@@ -16,6 +16,7 @@ from .db import Base, make_engine, make_session_factory
 from .security.audit import AuditLogger
 from .security.crypto import KeyRing, load_master_key
 from .security.ratelimit import RateLimiter
+from .security.sessions import StepUpWindow
 from .services import drugs as drug_service
 from .services.settings_store import SettingsStore
 from .storage import BlobStore
@@ -32,6 +33,7 @@ class AppContext:
     blobs: BlobStore
     audit: AuditLogger
     limiter: RateLimiter
+    step_up: StepUpWindow
     store: SettingsStore
     lexicon: LexiconCache
     claude: ClaudeEngine
@@ -72,6 +74,7 @@ def build_context(settings: Settings, *, claude_client=None) -> AppContext:
         blobs=BlobStore(settings.blobs_dir, keyring),
         audit=AuditLogger(sf, keyring, settings.data_dir / "audit.head"),
         limiter=RateLimiter(),
+        step_up=StepUpWindow(settings.step_up_minutes),
         store=SettingsStore(settings),
         lexicon=LexiconCache(drug_service.loader(sf), drug_service.fingerprint(sf)),
         claude=claude,

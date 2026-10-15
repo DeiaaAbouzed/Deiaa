@@ -144,10 +144,8 @@ def client(app):
 
 def add_user(ctx, username: str, role: str = "pharmacist", password: str = PASSWORD, **fields) -> User:
     with ctx.sf() as db:
-        values = {"must_change_password": False, **fields}
-        user = User(
-            username=username, full_name=username.title(), role=role, password_hash=hash_password(password), **values
-        )
+        values = {"must_change_password": False, "full_name": username.title(), **fields}
+        user = User(username=username, role=role, password_hash=hash_password(password), **values)
         db.add(user)
         db.commit()
         return user
@@ -177,6 +175,9 @@ class Api:
 
     def delete(self, url, headers=None, **kw):
         return self.client.delete(url, headers=self._headers(headers), **kw)
+
+    def session_id(self) -> int:
+        return next(s["id"] for s in self.get("/api/auth/sessions").json() if s["current"])
 
 
 @pytest.fixture

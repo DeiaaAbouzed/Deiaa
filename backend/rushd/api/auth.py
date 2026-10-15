@@ -200,6 +200,17 @@ def totp_disable(
     return me_payload(ctx, db, user, p.session)
 
 
+@router.post("/step-up")
+def step_up(
+    body: StepUpBody, p: Principal = Depends(current_principal), ctx=Depends(get_ctx), db: Session = Depends(get_db)
+):
+    """Re-confirm identity; account administration is then allowed for a few minutes."""
+    verify_step_up(db, ctx, p.user, body.password, body.totp, p.ip)
+    ctx.step_up.grant(p.session.id)
+    ctx.audit.record("step_up", user_id=p.id, username=p.user.username, ip=p.ip)
+    return {"ok": True, "minutes": ctx.settings.step_up_minutes}
+
+
 @router.get("/sessions")
 def my_sessions(p: Principal = Depends(current_principal), db: Session = Depends(get_db)):
     now = utcnow()

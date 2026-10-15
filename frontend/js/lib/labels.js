@@ -142,6 +142,7 @@ export const AUDIT_ACTIONS = {
   dataset_exported: 'تصدير بيانات التدريب',
   model_exported: 'تصدير نموذج محلي',
   model_imported: 'استيراد نموذج محلي',
+  step_up: 'تأكيد الهوية لإجراء حساس',
   settings_changed: 'تغيير الإعدادات',
   audit_verified: 'فحص سجل الأمان',
 };

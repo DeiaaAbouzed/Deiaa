@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     cookie_secure: bool = True
     session_idle_minutes: int = 30
     session_absolute_hours: int = 12
+    step_up_minutes: int = 10  # account administration re-asks for the password after this
     allowed_hosts: list[str] = ["*"]
     max_body_mb: int = 25
     max_bulk_body_mb: int = 400

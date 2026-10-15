@@ -14,6 +14,7 @@ from ..ai.safety import ingredients
 from ..ai.text import norm
 from ..db import utcnow
 from ..models import Drug
+from .csvsafe import to_csv
 
 CSV_FIELDS = ["brand", "generic", "class", "forms", "strengths", "aliases"]
 MAX_IMPORT_ROWS = 50_000
@@ -103,21 +104,18 @@ def import_csv(db: Session, text: str, source: str = "import") -> dict:
 
 
 def export_csv(db: Session) -> str:
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(CSV_FIELDS)
-    for d in db.execute(select(Drug).where(Drug.is_active.is_(True)).order_by(Drug.brand)).scalars():
-        writer.writerow(
-            [
-                d.brand,
-                d.generic,
-                d.drug_class,
-                "|".join(d.forms or []),
-                "|".join(d.strengths or []),
-                "|".join(d.aliases or []),
-            ]
-        )
-    return buf.getvalue()
+    rows = (
+        [
+            d.brand,
+            d.generic,
+            d.drug_class,
+            "|".join(d.forms or []),
+            "|".join(d.strengths or []),
+            "|".join(d.aliases or []),
+        ]
+        for d in db.execute(select(Drug).where(Drug.is_active.is_(True)).order_by(Drug.brand)).scalars()
+    )
+    return to_csv(CSV_FIELDS, rows)
 
 
 def _ensure_generics(db: Session) -> None:

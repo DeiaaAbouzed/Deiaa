@@ -1,10 +1,10 @@
 // Academy: pharmacists practise reading real (verified, approved) prescriptions.
-import { get, post } from '../lib/api.js';
+import { download, get, post } from '../lib/api.js';
 import { h, ltr, mount } from '../lib/dom.js';
 import { icon } from '../lib/icons.js';
-import { FREQUENCIES } from '../lib/labels.js';
+import { FREQUENCIES, ROLES } from '../lib/labels.js';
 import { MANAGERS, hasRole } from '../lib/state.js';
-import { alertBox, badge, button, empty, fmtNum, fmtPct, loading, pageHead, setBusy, showError } from '../lib/ui.js';
+import { alertBox, badge, button, empty, fmtNum, fmtPct, loading, pageHead, setBusy, showError, timeAgo } from '../lib/ui.js';
 import { imageViewer } from '../components/viewer.js';
 
 const DIFFICULTIES = [
@@ -13,6 +13,106 @@ const DIFFICULTIES = [
   ['medium', 'متوسط'],
   ['hard', 'صعب - خطوط حيّرت الذكاء الاصطناعي'],
 ];
+
+const PERIODS = [
+  [30, 'آخر ٣٠ يوماً'],
+  [90, 'آخر ٩٠ يوماً'],
+  [365, 'آخر سنة'],
+];
+const signed = new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 1, signDisplay: 'exceptZero' });
+
+function trend(points) {
+  if (points === null || points === undefined) return h('span', { class: 'muted small' }, '—');
+  if (points === 0) return badge('ثابت');
+  return points > 0 ? badge(`${signed.format(points)} نقطة`, 'good', 'arrowUp') : badge(`${signed.format(points)} نقطة`, 'bad', 'arrowDown');
+}
+
+/** Training manager's view: who practises, how well, who is improving - weakest first. */
+function progressCard() {
+  let days = 30;
+  let branchId = '';
+  const box = h('div', {});
+  const period = h('select', { class: 'select', 'aria-label': 'الفترة', onChange: (e) => { days = Number(e.target.value); load(); } }, PERIODS.map(([value, label]) => h('option', { value }, label)));
+  const branch = h('select', { class: 'select', 'aria-label': 'الفرع', onChange: (e) => { branchId = e.target.value; load(); } }, h('option', { value: '' }, 'كل الفروع'));
+  get('/api/branches')
+    .then((list) => list.forEach((b) => branch.append(h('option', { value: b.id }, b.name))))
+    .catch(() => {});
+  const query = () => new URLSearchParams({ days, ...(branchId ? { branch_id: branchId } : {}) }).toString();
+  const exportBtn = button('تصدير Excel', {
+    size: 'sm',
+    iconName: 'download',
+    onClick: async () => {
+      setBusy(exportBtn, true);
+      try {
+        await download('GET', `/api/academy/report.csv?${query()}`);
+      } catch (error) {
+        showError(error);
+      }
+      setBusy(exportBtn, false);
+    },
+  });
+
+  function render(data) {
+    const active = data.rows.filter((r) => r.attempts);
+    const idle = data.rows.filter((r) => !r.attempts);
+    const s = data.summary;
+    return [
+      h(
+        'div',
+        { class: 'row' },
+        badge(`مشاركون: ${fmtNum(s.participants)}`, 'info', 'users'),
+        badge(`محاولات: ${fmtNum(s.attempts)}`),
+        s.percent !== null ? badge(`متوسط الدرجة: ${fmtPct(s.percent / 100)}`, 'info') : null,
+      ),
+      active.length
+        ? h(
+            'div',
+            { class: 'table-wrap', style: { 'margin-top': '12px' } },
+            h(
+              'table',
+              { class: 'table' },
+              h('thead', {}, h('tr', {}, h('th', {}, 'الاسم'), h('th', { class: 'num' }, 'المحاولات'), h('th', { class: 'num' }, 'متوسط الدرجة'), h('th', {}, 'التحسن'), h('th', { class: 'num' }, 'الخطوط الصعبة'), h('th', { class: 'num' }, 'وقت التدريب'), h('th', {}, 'آخر نشاط'))),
+              h(
+                'tbody',
+                {},
+                active.map((r) =>
+                  h(
+                    'tr',
+                    {},
+                    h('td', {}, h('div', {}, r.name), h('div', { class: 'small muted' }, [ROLES[r.role] || r.role, r.branch].filter(Boolean).join(' · '))),
+                    h('td', { class: 'num' }, fmtNum(r.attempts)),
+                    h('td', { class: 'num' }, fmtPct(r.percent / 100)),
+                    h('td', {}, trend(r.improvement)),
+                    h('td', { class: 'num' }, r.hard_percent !== null ? `${fmtPct(r.hard_percent / 100)} (${fmtNum(r.hard_attempts)})` : '—'),
+                    h('td', { class: 'num' }, `${fmtNum(r.minutes)} د`),
+                    h('td', { class: 'small' }, timeAgo(r.last_activity)),
+                  ),
+                ),
+              ),
+            ),
+          )
+        : empty('لا توجد محاولات في هذه الفترة', 'book'),
+      idle.length ? h('div', { style: { 'margin-top': '12px' } }, alertBox('warn', `لم يتدربوا خلال هذه الفترة (${fmtNum(idle.length)})`, idle.map((r) => r.name).join('، '))) : null,
+    ];
+  }
+
+  async function load() {
+    mount(box, loading());
+    try {
+      mount(box, render(await get('/api/academy/report', { days, branch_id: branchId || null })));
+    } catch (error) {
+      mount(box, alertBox('bad', 'تعذر تحميل التقرير', error.message));
+    }
+  }
+
+  load();
+  return h(
+    'div',
+    { class: 'card', style: { 'margin-top': '16px' } },
+    h('div', { class: 'card-head wrap' }, h('div', {}, h('h2', {}, 'تقدم المتدربين'), h('p', {}, 'الأضعف أولاً - التحسن يقارن النصف الأخير من الفترة بالنصف الأول')), h('div', { class: 'controls' }, period, branch, exportBtn)),
+    box,
+  );
+}
 
 export default async function academyView(root) {
   const body = h('div', {});
@@ -78,6 +178,7 @@ export default async function academyView(root) {
             : empty('كن أول من يدخل لوحة الشرف!', 'award'),
         ),
       ),
+      hasRole(MANAGERS) ? progressCard() : null,
     );
   }
 

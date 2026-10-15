@@ -3,10 +3,10 @@ from __future__ import annotations
 import random
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import utcnow
@@ -19,16 +19,11 @@ from ..security.deps import (
     get_db,
     require_roles,
 )
-from ..services.academy import score
+from ..services.academy import DIFFICULTY, progress_report, score
+from ..services.csvsafe import to_csv
 from .errors import ApiError
 
 router = APIRouter(prefix="/api/academy", tags=["academy"])
-
-DIFFICULTY = {
-    "easy": lambda: Prescription.ai_confidence >= 0.9,
-    "medium": lambda: (Prescription.ai_confidence >= 0.7) & (Prescription.ai_confidence < 0.9),
-    "hard": lambda: or_(Prescription.ai_confidence < 0.7, Prescription.acc_drug < 1.0),
-}
 
 
 class StartBody(BaseModel):
@@ -205,3 +200,68 @@ def pool(p: Principal = Depends(require_roles(*MANAGERS)), db: Session = Depends
         "total": db.execute(base).scalar_one(),
         **{level: db.execute(base.where(cond())).scalar_one() for level, cond in DIFFICULTY.items()},
     }
+
+
+ROLE_NAMES = {"admin": "مدير", "trainer": "مدرب", "pharmacist": "صيدلي", "trainee": "متدرب"}
+REPORT_HEADER = [
+    "الاسم",
+    "اسم الدخول",
+    "الدور",
+    "الفرع",
+    "المحاولات",
+    "متوسط الدرجة %",
+    "التحسن (نقطة)",
+    "محاولات الخطوط الصعبة",
+    "درجة الخطوط الصعبة %",
+    "دقائق التدريب",
+    "آخر نشاط",
+]
+
+
+@router.get("/report")
+def report(
+    days: int = Query(default=30, ge=7, le=365),
+    branch_id: int | None = None,
+    p: Principal = Depends(require_roles(*MANAGERS)),
+    db: Session = Depends(get_db),
+):
+    return progress_report(db, days, branch_id)
+
+
+@router.get("/report.csv")
+def report_csv(
+    days: int = Query(default=30, ge=7, le=365),
+    branch_id: int | None = None,
+    p: Principal = Depends(require_roles(*MANAGERS)),
+    ctx=Depends(get_ctx),
+    db: Session = Depends(get_db),
+):
+    data = progress_report(db, days, branch_id)
+    rows = (
+        [
+            r["name"],
+            r["username"],
+            ROLE_NAMES.get(r["role"], r["role"]),
+            r["branch"],
+            r["attempts"],
+            r["percent"],
+            r["improvement"],
+            r["hard_attempts"],
+            r["hard_percent"],
+            r["minutes"],
+            r["last_activity"][:10] if r["last_activity"] else None,
+        ]
+        for r in data["rows"]
+    )
+    ctx.audit.record(
+        "academy_report_exported",
+        user_id=p.id,
+        username=p.user.username,
+        ip=p.ip,
+        details={"days": days, "branch_id": branch_id, "people": len(data["rows"])},
+    )
+    return Response(
+        to_csv(REPORT_HEADER, rows),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="academy-report-{utcnow():%Y%m%d}.csv"'},
+    )

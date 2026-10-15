@@ -2,7 +2,7 @@ import { get, post, put } from '../lib/api.js';
 import { h, ltr, mount } from '../lib/dom.js';
 import { ROLES } from '../lib/labels.js';
 import { state } from '../lib/state.js';
-import { badge, button, confirmDialog, field, loading, modal, pageHead, showError, stepUp, timeAgo, toast } from '../lib/ui.js';
+import { badge, button, confirmDialog, field, loading, modal, pageHead, showError, timeAgo, toast } from '../lib/ui.js';
 
 function showTemporaryPassword(username, password) {
   const box = h('div', { class: 'code-sample', style: { 'font-size': '1.2rem', 'text-align': 'center' } }, password);
@@ -48,12 +48,6 @@ export default async function usersView(root) {
           icon: 'plus',
           onClick: async (close) => {
             const body = { username: username.value.trim(), full_name: fullName.value.trim(), role: role.value, branch_id: branch.value ? Number(branch.value) : null };
-            if (body.role === 'admin') {
-              const confirm = await stepUp('إنشاء حساب مدير', { totp: true });
-              if (!confirm) return;
-              Object.assign(body, confirm);
-              delete body.extra;
-            }
             try {
               const result = await post('/api/users', body);
               close();
@@ -108,8 +102,9 @@ export default async function usersView(root) {
                 size: 'sm',
                 iconName: 'shield',
                 onClick: () => run(async () => {
-                  const confirm = await stepUp('إعادة ضبط التحقق بخطوتين', { totp: true });
-                  if (confirm) await post(`/api/users/${user.id}/reset-2fa`, confirm).then(() => toast('تمت إعادة الضبط'));
+                  if (!(await confirmDialog('سيُطلب من المستخدم إعداد التحقق بخطوتين من جديد عند دخوله. متابعة؟'))) return;
+                  await post(`/api/users/${user.id}/reset-2fa`);
+                  toast('تمت إعادة الضبط');
                 }),
               })
             : null,
@@ -124,12 +119,6 @@ export default async function usersView(root) {
           onClick: async (close) => {
             const body = { full_name: fullName.value.trim(), role: role.value, branch_id: branch.value ? Number(branch.value) : null };
             if (!self) body.is_active = active.checked;
-            if (body.role === 'admin' && user.role !== 'admin') {
-              const confirm = await stepUp('ترقية إلى مدير', { totp: true });
-              if (!confirm) return;
-              body.password = confirm.password;
-              body.totp = confirm.totp;
-            }
             try {
               await put(`/api/users/${user.id}`, body);
               close();

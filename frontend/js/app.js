@@ -1,10 +1,10 @@
-import { get, on, post, setCsrf } from './lib/api.js';
+import { get, on, post, setCsrf, setStepUpProvider } from './lib/api.js';
 import { clear, h, mount } from './lib/dom.js';
 import { icon, logo } from './lib/icons.js';
 import { ROLES } from './lib/labels.js';
 import { currentPath, navigate, route, start, stop } from './lib/router.js';
 import { ADMIN, EVERYONE, MANAGERS, STAFF, hasRole, homeRoute, state } from './lib/state.js';
-import { loading, modal, showError } from './lib/ui.js';
+import { loading, modal, showError, stepUp } from './lib/ui.js';
 import { renderLogin, renderOnboarding } from './views/login.js';
 
 const root = document.getElementById('root');
@@ -198,6 +198,14 @@ function enter(me) {
   start(view, homeRoute, markActive);
   if (currentPath()) markActive(currentPath());
 }
+
+setStepUpProvider(async () => {
+  const answer = await stepUp('تأكيد الهوية', {
+    totp: Boolean(state.me && state.me.user.totp_enabled),
+    note: 'إدارة الحسابات إجراء حساس: أدخل كلمة مرورك، ولن يُطلب منك ذلك مرة أخرى خلال ١٠ دقائق.',
+  });
+  return answer && { password: answer.password, totp: answer.totp };
+});
 
 on('unauthorized', () => {
   if (state.me) showLogin('انتهت جلستك لحماية البيانات، سجّل الدخول مرة أخرى.');

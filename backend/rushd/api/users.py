@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 
 from ..db import utcnow
 from ..models import Branch, User
-from ..security.deps import ADMIN, EVERYONE, Principal, get_ctx, get_db, require_roles
+from ..security.deps import ADMIN, EVERYONE, Principal, ensure_recent_step_up, get_ctx, get_db, require_roles
 from ..security.passwords import generate_temporary_password, hash_password
 from ..security.sessions import revoke_user_sessions
-from ..services.accounts import find_user, verify_step_up
+from ..services.accounts import find_user
 from .errors import ApiError
 
 router = APIRouter(prefix="/api", tags=["users"])
@@ -25,8 +25,6 @@ class UserCreate(BaseModel):
     full_name: str = Field(default="", max_length=120)
     role: str = Field(pattern="^(admin|trainer|pharmacist|trainee)$")
     branch_id: int | None = None
-    password: str | None = Field(default=None, max_length=256, description="admin step-up when creating an admin")
-    totp: str | None = Field(default=None, max_length=12)
 
 
 class UserUpdate(BaseModel):
@@ -34,13 +32,6 @@ class UserUpdate(BaseModel):
     role: str | None = Field(default=None, pattern="^(admin|trainer|pharmacist|trainee)$")
     branch_id: int | None = None
     is_active: bool | None = None
-    password: str | None = Field(default=None, max_length=256)
-    totp: str | None = Field(default=None, max_length=12)
-
-
-class StepUp(BaseModel):
-    password: str = Field(max_length=256)
-    totp: str | None = Field(default=None, max_length=12)
 
 
 class BranchBody(BaseModel):
@@ -91,8 +82,7 @@ def create_user(
         raise ApiError(400, "اسم المستخدم: 3-32 حرف إنجليزي صغير أو أرقام أو . _ -")
     if find_user(db, username):
         raise ApiError(409, "اسم المستخدم مستخدم بالفعل")
-    if body.role == "admin":
-        verify_step_up(db, ctx, p.user, body.password or "", body.totp, p.ip)
+    ensure_recent_step_up(ctx, p)
     if body.branch_id is not None and db.get(Branch, body.branch_id) is None:
         raise ApiError(400, "الفرع غير موجود")
     temporary = generate_temporary_password()
@@ -121,11 +111,11 @@ def update_user(
     db: Session = Depends(get_db),
 ):
     user = _get_user(db, user_id)
-    changes = body.model_dump(exclude_unset=True, exclude={"password", "totp"})
+    changes = body.model_dump(exclude_unset=True)
     if user.id == p.id and (changes.get("role", "admin") != "admin" or changes.get("is_active") is False):
         raise ApiError(400, "لا يمكنك إزالة صلاحية المدير أو تعطيل حسابك بنفسك")
-    if changes.get("role") == "admin" and user.role != "admin":
-        verify_step_up(db, ctx, p.user, body.password or "", body.totp, p.ip)
+    if changes.get("role", user.role) != user.role or changes.get("is_active", user.is_active) != user.is_active:
+        ensure_recent_step_up(ctx, p)
     if "branch_id" in changes and changes["branch_id"] is not None and db.get(Branch, changes["branch_id"]) is None:
         raise ApiError(400, "الفرع غير موجود")
     for key, value in changes.items():
@@ -144,6 +134,7 @@ def reset_password(
     user_id: int, p: Principal = Depends(require_roles(*ADMIN)), ctx=Depends(get_ctx), db: Session = Depends(get_db)
 ):
     user = _get_user(db, user_id)
+    ensure_recent_step_up(ctx, p)
     temporary = generate_temporary_password()
     user.password_hash = hash_password(temporary)
     user.must_change_password = True
@@ -169,14 +160,10 @@ def unlock(
 
 @router.post("/users/{user_id}/reset-2fa")
 def reset_2fa(
-    user_id: int,
-    body: StepUp,
-    p: Principal = Depends(require_roles(*ADMIN)),
-    ctx=Depends(get_ctx),
-    db: Session = Depends(get_db),
+    user_id: int, p: Principal = Depends(require_roles(*ADMIN)), ctx=Depends(get_ctx), db: Session = Depends(get_db)
 ):
-    verify_step_up(db, ctx, p.user, body.password, body.totp, p.ip)
     user = _get_user(db, user_id)
+    ensure_recent_step_up(ctx, p)
     user.totp_enabled = False
     user.totp_secret_enc = None
     user.totp_last_step = None

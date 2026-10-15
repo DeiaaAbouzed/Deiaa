@@ -38,7 +38,26 @@ function fail(status, data, path) {
   return error;
 }
 
-export async function request(method, path, { json, form, query, signal, raw = false } = {}) {
+// Account administration answers 403 step_up_required until the password is re-entered; the app
+// registers a dialog here, and the original request is retried once after a successful step-up.
+let stepUpProvider = null;
+export function setStepUpProvider(fn) {
+  stepUpProvider = fn;
+}
+
+export async function request(method, path, options = {}) {
+  try {
+    return await send(method, path, options);
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.code !== 'step_up_required' || !stepUpProvider) throw error;
+    const credentials = await stepUpProvider();
+    if (!credentials) throw new ApiError(403, 'تم الإلغاء', 'cancelled');
+    await send('POST', '/api/auth/step-up', { json: credentials });
+    return send(method, path, options);
+  }
+}
+
+async function send(method, path, { json, form, query, signal, raw = false } = {}) {
   const headers = { Accept: 'application/json' };
   let body;
   if (json !== undefined) {

@@ -441,6 +441,19 @@ main#view {
   color: var(--muted);
   font-size: 0.85rem;
 }
+.card-head.wrap {
+  flex-wrap: wrap;
+}
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.controls .select {
+  width: auto;
+  min-width: 130px;
+}
 .card.flat {
   box-shadow: none;
   background: var(--surface-2);

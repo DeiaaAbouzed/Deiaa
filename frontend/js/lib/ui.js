@@ -143,7 +143,7 @@ export function confirmDialog(message, { title = 'تأكيد', confirm = 'تأك
 }
 
 /** Ask the user to re-enter their password (+ 2FA code) before a sensitive action. */
-export function stepUp(title, { totp = false, extra = null } = {}) {
+export function stepUp(title, { totp = false, extra = null, note = 'هذا إجراء حساس؛ أدخل كلمة مرورك للمتابعة.' } = {}) {
   return new Promise((resolve) => {
     const password = h('input', { class: 'input', type: 'password', autocomplete: 'current-password', required: true });
     const code = h('input', { class: 'input code', inputmode: 'numeric', maxlength: 6, autocomplete: 'one-time-code', placeholder: '000000' });
@@ -157,7 +157,7 @@ export function stepUp(title, { totp = false, extra = null } = {}) {
     const form = h(
       'form',
       { class: 'stack', onSubmit: (e) => { e.preventDefault(); submit(handle.close); } },
-      alertBox('info', 'تأكيد الهوية مطلوب', 'هذا إجراء حساس؛ أدخل كلمة مرورك للمتابعة.', 'lock'),
+      alertBox('info', 'تأكيد الهوية مطلوب', note, 'lock'),
       field('كلمة المرور', password),
       totp ? field('رمز التحقق بخطوتين', code) : null,
       extra ? extra.node : null,

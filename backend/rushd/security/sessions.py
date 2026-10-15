@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import threading
+import time
 from datetime import timedelta
 
 from sqlalchemy import select, update
@@ -71,3 +73,30 @@ def revoke_user_sessions(db: Session, user_id: int, except_session_id: int | Non
         stmt = stmt.where(UserSession.id != except_session_id)
     result = db.execute(stmt.values(revoked=True))
     return result.rowcount or 0
+
+
+class StepUpWindow:
+    """Sessions whose user re-entered the password (and 2FA code) in the last few minutes.
+
+    Account administration requires it, so a hijacked or unattended admin session cannot quietly
+    create accounts or take over existing ones. Kept in memory on purpose: a restart just asks again.
+    """
+
+    def __init__(self, minutes: int):
+        self.seconds = minutes * 60
+        self._until: dict[int, float] = {}
+        self._lock = threading.Lock()
+
+    def grant(self, session_id: int) -> None:
+        now = time.monotonic()
+        with self._lock:
+            self._until = {sid: t for sid, t in self._until.items() if t > now}
+            self._until[session_id] = now + self.seconds
+
+    def active(self, session_id: int) -> bool:
+        with self._lock:
+            return self._until.get(session_id, 0.0) > time.monotonic()
+
+    def clear(self, session_id: int) -> None:
+        with self._lock:
+            self._until.pop(session_id, None)
