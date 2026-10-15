@@ -75,7 +75,7 @@ export function icon(name, cls = '') {
       'stroke-linejoin': 'round',
       'aria-hidden': 'true',
       focusable: 'false',
-      class: cls || null,
+      class: cls ? `ic ${cls}` : 'ic',
     },
     parts.map(([tag, attrs]) => svg(tag, attrs)),
   );
