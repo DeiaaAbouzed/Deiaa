@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rushd"
+version = "1.0.0"
+description = "Rushd - secure, self-learning AI reader for handwritten Egyptian prescriptions"
+readme = "../README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary - All rights reserved" }
+dependencies = [
+    "fastapi>=0.140",
+    "uvicorn[standard]>=0.50",
+    "sqlalchemy>=2.0",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.6",
+    "argon2-cffi>=23.1",
+    "cryptography>=44",
+    "pyotp>=2.9",
+    "qrcode>=8.0",
+    "pillow>=11",
+    "rapidfuzz>=3.10",
+    "anthropic>=1.14",
+    "python-multipart>=0.0.20",
+]
+
+[project.optional-dependencies]
+train = [
+    "torch>=2.5",
+    "transformers>=4.57",
+    "peft>=0.13",
+    "accelerate>=1.0",
+    "safetensors>=0.4",
+]
+dev = ["pytest>=8", "httpx>=0.28"]
+
+[project.scripts]
+rushd = "rushd.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["rushd*"]
+
+[tool.setuptools.package-data]
+rushd = ["data/*.csv"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "B008", "B905"]

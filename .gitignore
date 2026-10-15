@@ -1,0 +1,26 @@
+# Secrets and patient data must never be committed
+/secrets/
+/data/
+*.key
+*.rushd
+*.backup
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

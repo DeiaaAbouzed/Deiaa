@@ -1,0 +1,192 @@
+brand,generic,class,forms,strengths,aliases
+Panadol,paracetamol,Analgesic/antipyretic,tablet,500mg,بنادول
+Panadol Extra,paracetamol + caffeine,Analgesic/antipyretic,tablet,500mg/65mg,بنادول اكسترا
+Adol,paracetamol,Analgesic/antipyretic,tablet|syrup|suppository,500mg|120mg/5ml|125mg|250mg,أدول
+Abimol,paracetamol,Analgesic/antipyretic,tablet|syrup,,أبيمول
+Cetal,paracetamol,Analgesic/antipyretic,syrup|drops|suppository,,سيتال
+Novalgin,metamizole sodium,Analgesic/antipyretic,ampoule|tablet|drops,,نوفالجين|Novalgine
+Brufen,ibuprofen,NSAID,tablet|syrup,200mg|400mg|600mg|100mg/5ml,بروفين
+Cataflam,diclofenac potassium,NSAID,tablet|drops,25mg|50mg,كتافلام
+Voltaren,diclofenac sodium,NSAID,tablet|ampoule|suppository|gel,25mg|50mg|75mg|100mg|75mg/3ml,فولتارين|Voltaren Emulgel
+Olfen,diclofenac sodium,NSAID,tablet|ampoule|gel,,أولفين
+Declophen,diclofenac sodium,NSAID,tablet|ampoule|gel,,ديكلوفين
+Ketofan,ketoprofen,NSAID,capsule|ampoule|gel,50mg|100mg,كيتوفان
+Profenid,ketoprofen,NSAID,capsule|ampoule|gel,,بروفينيد
+Ketolac,ketorolac,NSAID,tablet|ampoule,10mg|30mg,كيتولاك
+Feldene,piroxicam,NSAID,capsule|ampoule|gel,10mg|20mg,فيلدين
+Mobic,meloxicam,NSAID,tablet|ampoule,7.5mg|15mg,موبيك
+Celebrex,celecoxib,NSAID,capsule,100mg|200mg,سيليبريكس
+Arcoxia,etoricoxib,NSAID,tablet,60mg|90mg|120mg,أركوكسيا
+Ponstan,mefenamic acid,NSAID,capsule|tablet|suspension,250mg|500mg,بونستان
+Tramal,tramadol,Opioid analgesic,capsule|ampoule,50mg|100mg,ترامال
+Aspocid,acetylsalicylic acid,Antiplatelet,tablet,75mg|300mg,أسبوسيد
+Aspirin Protect,acetylsalicylic acid,Antiplatelet,tablet,100mg,أسبرين بروتكت
+Plavix,clopidogrel,Antiplatelet,tablet,75mg,بلافيكس
+Marevan,warfarin,Anticoagulant,tablet,1mg|3mg|5mg,ماريفان
+Xarelto,rivaroxaban,Anticoagulant,tablet,10mg|15mg|20mg,زاريلتو
+Eliquis,apixaban,Anticoagulant,tablet,2.5mg|5mg,إليكويس
+Clexane,enoxaparin,Anticoagulant,prefilled_syringe,20mg|40mg|60mg|80mg,كليكسان
+Augmentin,amoxicillin + clavulanic acid,Penicillin antibiotic,tablet|suspension|vial,375mg|625mg|1g|156mg/5ml|228mg/5ml|457mg/5ml|1.2g,أوجمنتين
+Hibiotic,amoxicillin + clavulanic acid,Penicillin antibiotic,tablet|suspension,375mg|625mg|1g|156mg/5ml|228mg/5ml|457mg/5ml,هاي بيوتك|Hi-biotic
+Megamox,amoxicillin + clavulanic acid,Penicillin antibiotic,tablet|suspension,375mg|625mg|1g|156mg/5ml|228mg/5ml|457mg/5ml,ميجاموكس
+Curam,amoxicillin + clavulanic acid,Penicillin antibiotic,tablet|suspension,625mg|1g|156mg/5ml|312mg/5ml|457mg/5ml,كيورام
+E-Mox,amoxicillin,Penicillin antibiotic,capsule|suspension,250mg|500mg|125mg/5ml|250mg/5ml,Emox|إيموكس
+Amoxil,amoxicillin,Penicillin antibiotic,capsule|suspension,250mg|500mg,أموكسيل
+Unasyn,ampicillin + sulbactam,Penicillin antibiotic,tablet|suspension|vial,375mg|750mg|1.5g,يوناسين
+Flagyl,metronidazole,Nitroimidazole antimicrobial,tablet|suspension|infusion,250mg|500mg|125mg/5ml,فلاجيل
+Antinal,nifuroxazide,Intestinal antiseptic,capsule|suspension,200mg|220mg/5ml,أنتينال
+Ciprobay,ciprofloxacin,Fluoroquinolone,tablet|infusion,250mg|500mg|750mg,سيبروباي
+Tavanic,levofloxacin,Fluoroquinolone,tablet|infusion,250mg|500mg,تافانيك
+Levoxin,levofloxacin,Fluoroquinolone,tablet,250mg|500mg|750mg,ليفوكسين
+Avalox,moxifloxacin,Fluoroquinolone,tablet,400mg,أفالوكس
+Zithromax,azithromycin,Macrolide,capsule|tablet|suspension,250mg|500mg|200mg/5ml,زيثروماكس
+Xithrone,azithromycin,Macrolide,capsule|tablet|suspension,250mg|500mg|200mg/5ml,زيثرون
+Klacid,clarithromycin,Macrolide,tablet|suspension,250mg|500mg|125mg/5ml|250mg/5ml,كلاسيد
+Rocephin,ceftriaxone,Cephalosporin,vial,250mg|500mg|1g|2g,روسيفين
+Claforan,cefotaxime,Cephalosporin,vial,500mg|1g,كلافوران
+Fortum,ceftazidime,Cephalosporin,vial,500mg|1g|2g,فورتم
+Zinnat,cefuroxime,Cephalosporin,tablet|suspension,125mg|250mg|500mg,زينات
+Suprax,cefixime,Cephalosporin,capsule|suspension,200mg|400mg|100mg/5ml,سوبراكس
+Vibramycin,doxycycline,Tetracycline,capsule,100mg,فيبراميسين
+Dalacin C,clindamycin,Lincosamide,capsule|ampoule,150mg|300mg,دالاسين
+Uvamin Retard,nitrofurantoin,Urinary antiseptic,capsule,100mg,Uvamin|يوفامين
+Fucidin,fusidic acid,Topical antibiotic,cream|ointment,2%,فيوسيدين
+Garamycin,gentamicin,Aminoglycoside,ampoule|cream|eye_drops,,جارامايسين
+Tobrex,tobramycin,Aminoglycoside,eye_drops|eye_ointment,0.3%,توبركس
+Tobradex,tobramycin + dexamethasone,Antibiotic/corticosteroid (eye),eye_drops|eye_ointment,,توبرادكس
+Vigamox,moxifloxacin,Fluoroquinolone,eye_drops,0.5%,فيجاموكس
+Diflucan,fluconazole,Azole antifungal,capsule,50mg|150mg|200mg,ديفلوكان
+Nizoral,ketoconazole,Azole antifungal,cream|shampoo,2%,نيزورال
+Daktarin,miconazole,Azole antifungal,oral_gel|cream,2%,دكتارين
+Canesten,clotrimazole,Azole antifungal,cream|vaginal_tablet,1%,كانستين
+Lamisil,terbinafine,Antifungal,tablet|cream,250mg|1%,لاميزيل
+Zovirax,aciclovir,Antiviral,tablet|cream,200mg|400mg|800mg|5%,زوفيراكس
+Tamiflu,oseltamivir,Antiviral,capsule,75mg,تاميفلو
+Vermox,mebendazole,Anthelmintic,tablet|suspension,100mg|500mg,فيرموكس
+Zentel,albendazole,Anthelmintic,tablet|suspension,200mg|400mg,زنتل
+Alzental,albendazole,Anthelmintic,tablet|suspension,200mg|400mg,ألزنتال
+Nexium,esomeprazole,PPI,tablet|sachet|vial,20mg|40mg,نيكسيوم
+Controloc,pantoprazole,PPI,tablet|vial,20mg|40mg,كونترولوك
+Pantoloc,pantoprazole,PPI,tablet,20mg|40mg,بانتولوك
+Losec,omeprazole,PPI,capsule|tablet,10mg|20mg|40mg,لوسيك
+Antodine,famotidine,H2 blocker,tablet|ampoule,20mg|40mg,أنتودين
+Motilium,domperidone,Prokinetic/antiemetic,tablet|suspension,10mg,موتيليوم
+Motinorm,domperidone,Prokinetic/antiemetic,tablet|suspension,10mg,موتينورم
+Primperan,metoclopramide,Prokinetic/antiemetic,tablet|ampoule|syrup,10mg,بريمبران
+Zofran,ondansetron,Antiemetic,tablet|ampoule,4mg|8mg,زوفران
+Buscopan,hyoscine butylbromide,Antispasmodic,tablet|ampoule,10mg,بسكوبان
+Visceralgine,tiemonium methylsulfate,Antispasmodic,tablet|ampoule|syrup,,فيسيرالجين
+Duspatalin,mebeverine,Antispasmodic,tablet|capsule,135mg|200mg,دسباتالين
+Colospasmin,mebeverine,Antispasmodic,tablet,135mg,كولوسبازمين
+Librax,chlordiazepoxide + clidinium bromide,Antispasmodic,capsule,,ليبراكس
+Gaviscon,sodium alginate + sodium bicarbonate + calcium carbonate,Antacid/alginate,suspension|tablet,,جافيسكون
+Maalox,aluminium hydroxide + magnesium hydroxide,Antacid,suspension|tablet,,مالوكس
+Smecta,diosmectite,Antidiarrheal,sachet,3g,سميكتا
+Imodium,loperamide,Antidiarrheal,capsule,2mg,إيموديوم
+Dulcolax,bisacodyl,Laxative,tablet|suppository,5mg|10mg,دلكولاكس
+Duphalac,lactulose,Laxative,syrup,,دوفالاك
+Enterogermina,bacillus clausii,Probiotic,suspension|capsule,,إنتروجيرمينا
+Zyrtec,cetirizine,Antihistamine,tablet|syrup|drops,10mg|5mg/5ml,زيرتك
+Claritine,loratadine,Antihistamine,tablet|syrup,10mg|5mg/5ml,Clarityne|Claritin|كلاريتين
+Clarinase,loratadine + pseudoephedrine,Antihistamine/decongestant,tablet,,كلارينيز
+Aerius,desloratadine,Antihistamine,tablet|syrup,5mg|2.5mg/5ml,إيريوس
+Telfast,fexofenadine,Antihistamine,tablet,120mg|180mg,تلفاست
+Xyzal,levocetirizine,Antihistamine,tablet|drops,5mg,زيزال
+Phenergan,promethazine,Antihistamine,tablet|syrup|ampoule,25mg,فينرجان
+Avil,pheniramine,Antihistamine,ampoule|tablet,,أفيل
+Congestal,paracetamol + pseudoephedrine + chlorpheniramine,Cold & flu combination,tablet|syrup,,كونجستال
+Otrivin,xylometazoline,Nasal decongestant,nasal_spray|nasal_drops,0.05%|0.1%,أوتريفين
+Ventolin,salbutamol,Beta-2 agonist,inhaler|syrup|nebulizer|tablet,100mcg|2mg|4mg|2mg/5ml|5mg/ml,فنتولين
+Farcolin,salbutamol,Beta-2 agonist,inhaler|syrup|nebulizer|tablet,,فاركولين
+Seretide,salmeterol + fluticasone,ICS/LABA,inhaler,25/50mcg|25/125mcg|25/250mcg|50/100mcg|50/250mcg|50/500mcg,سيريتايد
+Symbicort,budesonide + formoterol,ICS/LABA,inhaler,80/4.5mcg|160/4.5mcg|320/9mcg,سيمبيكورت
+Pulmicort,budesonide,Inhaled corticosteroid,nebulizer|inhaler,0.25mg/ml|0.5mg/ml,بولميكورت
+Atrovent,ipratropium bromide,Anticholinergic bronchodilator,inhaler|nebulizer,,أتروفنت
+Singulair,montelukast,Leukotriene receptor antagonist,tablet|chewable_tablet|sachet,4mg|5mg|10mg,سينجولير
+Mucosolvan,ambroxol,Mucolytic,syrup|tablet|drops,30mg|15mg/5ml|30mg/5ml,ميوكوسولفان
+Bisolvon,bromhexine,Mucolytic,syrup|tablet,8mg|4mg/5ml,بيسولفون
+Prospan,ivy leaf extract,Herbal expectorant,syrup,,بروسبان
+Sinupret,herbal combination (sinus),Herbal decongestant,tablet|drops,,سينوبريت
+Flixonase,fluticasone propionate,Nasal corticosteroid,nasal_spray,50mcg,فليكسونيز
+Nasonex,mometasone furoate,Nasal corticosteroid,nasal_spray,50mcg,نازونكس
+Concor,bisoprolol,Beta blocker,tablet,1.25mg|2.5mg|5mg|10mg,كونكور
+Tenormin,atenolol,Beta blocker,tablet,25mg|50mg|100mg,تينورمين
+Inderal,propranolol,Beta blocker,tablet,10mg|40mg,إندرال
+Dilatrend,carvedilol,Beta blocker,tablet,6.25mg|12.5mg|25mg,ديلاترند
+Norvasc,amlodipine,Calcium channel blocker,tablet,5mg|10mg,نورفاسك
+Adalat,nifedipine,Calcium channel blocker,tablet|capsule,10mg|20mg|30mg,أدالات
+Isoptin,verapamil,Calcium channel blocker,tablet,40mg|80mg|240mg,إيزوبتين
+Capoten,captopril,ACE inhibitor,tablet,25mg|50mg,كابوتين
+Tritace,ramipril,ACE inhibitor,tablet|capsule,1.25mg|2.5mg|5mg|10mg,تريتاس
+Diovan,valsartan,ARB,tablet,80mg|160mg|320mg,ديوفان
+Co-Diovan,valsartan + hydrochlorothiazide,ARB/thiazide,tablet,80/12.5mg|160/12.5mg|160/25mg,كو ديوفان
+Cozaar,losartan,ARB,tablet,50mg|100mg,كوزار
+Exforge,amlodipine + valsartan,CCB/ARB,tablet,5/80mg|5/160mg|10/160mg,إكسفورج
+Aldomet,methyldopa,Central alpha-2 agonist,tablet,250mg,ألدوميت
+Lasix,furosemide,Loop diuretic,tablet|ampoule,40mg|20mg/2ml,لازكس
+Aldactone,spironolactone,Potassium-sparing diuretic,tablet,25mg|100mg,ألداكتون
+Lanoxin,digoxin,Cardiac glycoside,tablet,0.25mg,لانوكسين
+Isordil,isosorbide dinitrate,Nitrate,tablet,5mg|10mg,إيزورديل
+Lipitor,atorvastatin,Statin,tablet,10mg|20mg|40mg|80mg,ليبيتور
+Ator,atorvastatin,Statin,tablet,10mg|20mg|40mg|80mg,أتور
+Crestor,rosuvastatin,Statin,tablet,5mg|10mg|20mg|40mg,كريستور
+Daflon,diosmin + hesperidin,Venotonic,tablet,500mg|1000mg,دافلون
+Glucophage,metformin,Biguanide,tablet,500mg|850mg|1000mg,جلوكوفاج
+Cidophage,metformin,Biguanide,tablet,500mg|850mg|1000mg,سيدوفاج
+Amaryl,glimepiride,Sulfonylurea,tablet,1mg|2mg|3mg|4mg,أماريل
+Daonil,glibenclamide,Sulfonylurea,tablet,5mg,داونيل
+Diamicron,gliclazide,Sulfonylurea,tablet,30mg|60mg,Diamicron MR|دياميكرون
+Januvia,sitagliptin,DPP-4 inhibitor,tablet,25mg|50mg|100mg,جانوفيا
+Janumet,sitagliptin + metformin,DPP-4 inhibitor/biguanide,tablet,50/500mg|50/850mg|50/1000mg,جانوميت
+Galvus,vildagliptin,DPP-4 inhibitor,tablet,50mg,جالفس
+Galvus Met,vildagliptin + metformin,DPP-4 inhibitor/biguanide,tablet,50/500mg|50/850mg|50/1000mg,جالفس ميت
+Jardiance,empagliflozin,SGLT2 inhibitor,tablet,10mg|25mg,جارديانس
+Forxiga,dapagliflozin,SGLT2 inhibitor,tablet,5mg|10mg,فوركسيجا
+Mixtard,insulin human (premixed 30/70),Insulin,vial|pen,30/70,Mixtard 30|ميكستارد
+Insulatard,insulin isophane (NPH),Insulin,vial|pen,,إنسولاتارد
+NovoRapid,insulin aspart,Insulin,pen|vial,,نوفورابيد
+Lantus,insulin glargine,Insulin,pen|vial,100IU/ml,لانتوس
+Eltroxin,levothyroxine,Thyroid hormone,tablet,25mcg|50mcg|100mcg,إلتروكسين
+Euthyrox,levothyroxine,Thyroid hormone,tablet,25mcg|50mcg|75mcg|100mcg|125mcg|150mcg,يوثيروكس
+Neo-Mercazole,carbimazole,Antithyroid,tablet,5mg|20mg,Neomercazole|نيوميركازول
+Decadron,dexamethasone,Corticosteroid,ampoule|tablet,,Dexa|ديكادرون
+Diprofos,betamethasone,Corticosteroid,ampoule,,ديبروفوس
+Solu-Medrol,methylprednisolone,Corticosteroid,vial,40mg|125mg|500mg|1g,Solumedrol|سولوميدرول
+Depo-Medrol,methylprednisolone acetate,Corticosteroid,vial,40mg/ml,Depomedrol|ديبوميدرول
+Solu-Cortef,hydrocortisone,Corticosteroid,vial,100mg,Solucortef|سولوكورتيف
+Kenacort-A,triamcinolone acetonide,Corticosteroid,vial,40mg/ml,Kenacort|كيناكورت
+Solupred,prednisolone,Corticosteroid,tablet,5mg|20mg,سولوبريد
+Betnovate,betamethasone valerate,Topical corticosteroid,cream|ointment|lotion,0.1%,بيتنوفيت
+Dermovate,clobetasol propionate,Topical corticosteroid,cream|ointment,0.05%,ديرموفيت
+Fucicort,fusidic acid + betamethasone valerate,Topical antibiotic/corticosteroid,cream,,فيوسيكورت
+Neurobion,thiamine + pyridoxine + cyanocobalamin,Vitamin B complex,tablet|ampoule,,نيوروبيون
+Milga,benfotiamine + pyridoxine,Vitamin B complex,tablet,,ميلجا
+Devarol-S,cholecalciferol,Vitamin D,ampoule,200000IU,Devarol|ديفارول
+Xanax,alprazolam,Benzodiazepine,tablet,0.25mg|0.5mg|1mg,زاناكس
+Rivotril,clonazepam,Benzodiazepine,tablet|drops,0.5mg|2mg,ريفوتريل
+Cipralex,escitalopram,SSRI,tablet,10mg|20mg,سيبرالكس
+Prozac,fluoxetine,SSRI,capsule,20mg,بروزاك
+Lustral,sertraline,SSRI,tablet,50mg|100mg,لوسترال
+Tegretol,carbamazepine,Anticonvulsant,tablet|syrup,200mg|400mg,Tegretol CR|تجريتول
+Depakine,sodium valproate,Anticonvulsant,tablet|syrup,200mg|500mg,Depakine Chrono|ديباكين
+Lyrica,pregabalin,Gabapentinoid,capsule,25mg|75mg|150mg|300mg,ليريكا
+Neurontin,gabapentin,Gabapentinoid,capsule|tablet,100mg|300mg|400mg|600mg|800mg,نيورونتين
+Stugeron,cinnarizine,Anti-vertigo,tablet,25mg|75mg,ستوجيرون
+Betaserc,betahistine,Anti-vertigo,tablet,8mg|16mg|24mg,بيتاسيرك
+Omnic,tamsulosin,Alpha blocker,capsule,0.4mg,Omnic Ocas|أومنيك
+Xatral,alfuzosin,Alpha blocker,tablet,10mg,Xatral XL|زاترال
+Avodart,dutasteride,5-alpha reductase inhibitor,capsule,0.5mg,أفودارت
+Viagra,sildenafil,PDE5 inhibitor,tablet,25mg|50mg|100mg,فياجرا
+Cialis,tadalafil,PDE5 inhibitor,tablet,5mg|10mg|20mg,سياليس
+Duphaston,dydrogesterone,Progestogen,tablet,10mg,دوفاستون
+Clomid,clomifene,Ovulation inducer,tablet,50mg,كلوميد
+Rowatinex,terpene combination,Urinary stone,capsule,,روواتينكس
+Cystone,herbal combination (urinary),Urinary stone,tablet,,سيستون
+Betadine,povidone-iodine,Antiseptic,solution|ointment|mouthwash,10%,بيتادين
+Bepanthen,dexpanthenol,Skin protectant,cream|ointment,5%,بيبانثين
+Hirudoid,mucopolysaccharide polysulfate,Topical venotonic,cream|gel,,هيرودويد
+Systane,polyethylene glycol + propylene glycol,Lubricant eye drops,eye_drops,,سيستين
+Tears Naturale,dextran 70 + hypromellose,Lubricant eye drops,eye_drops,,تيرز ناتشورال
+Xalatan,latanoprost,Prostaglandin analogue (glaucoma),eye_drops,0.005%,زالاتان
+Alphintern,trypsin + chymotrypsin,Proteolytic enzyme,tablet,,ألفينترن
+Zyloric,allopurinol,Xanthine oxidase inhibitor,tablet,100mg|300mg,زيلوريك
