@@ -76,7 +76,9 @@ def build(keystore: Path, out: Path) -> Path:
         sys.exit(
             f"error: {PLATFORM} missing - apt install android-sdk-platform-23 aapt dalvik-exchange zipalign apksigner"
         )
-    version = re.search(r'android:versionName="([^"]+)"', (ANDROID / "AndroidManifest.xml").read_text()).group(1)
+    manifest = (ANDROID / "AndroidManifest.xml").read_text()
+    version = re.search(r'android:versionName="([^"]+)"', manifest).group(1)
+    min_sdk = re.search(r'android:minSdkVersion="(\d+)"', manifest).group(1)
     work = out / "android-build"
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
@@ -111,7 +113,7 @@ def build(keystore: Path, out: Path) -> Path:
         "javac", "-source", "8", "-target", "8", "-bootclasspath", PLATFORM, "-Xlint:-options",
         "-encoding", "UTF-8", "-d", classes, *sources,
     )  # fmt: skip
-    run("dalvik-exchange", "--dex", "--min-sdk-version=24", f"--output={work / 'classes.dex'}", classes)
+    run("dalvik-exchange", "--dex", f"--min-sdk-version={min_sdk}", f"--output={work / 'classes.dex'}", classes)
     with zipfile.ZipFile(unsigned, "a", zipfile.ZIP_DEFLATED) as apk:
         apk.write(work / "classes.dex", "classes.dex")
 
@@ -122,7 +124,7 @@ def build(keystore: Path, out: Path) -> Path:
     run(
         "apksigner", "sign", "--ks", keystore, "--ks-key-alias", "rushd",
         "--ks-pass", f"file:{password}",  # PKCS12: the key shares the keystore's password
-        "--min-sdk-version", "24", "--out", apk, aligned,
+        "--min-sdk-version", min_sdk, "--out", apk, aligned,  # below 24 this adds the v1 (JAR) signature
     )  # fmt: skip
     print(run("apksigner", "verify", "--verbose", "--print-certs", apk).stdout.strip())
     digest = hashlib.sha256(apk.read_bytes()).hexdigest()

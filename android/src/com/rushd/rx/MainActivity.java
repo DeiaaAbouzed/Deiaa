@@ -48,6 +48,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * رُشد للأندرويد: the Rushd web app from the pharmacy's PC or server, full screen.
@@ -79,13 +81,15 @@ public class MainActivity extends Activity {
         Window window = getWindow();
         // Patient data: no screenshots, screen recordings or previews in the recent-apps list.
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        window.setStatusBarColor(Color.WHITE);
-        int bars = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-        if (Build.VERSION.SDK_INT >= 26) {
-            window.setNavigationBarColor(Color.WHITE);
-            bars |= 0x10; // View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR (API 26)
+        if (Build.VERSION.SDK_INT >= 23) { // dark status-bar icons exist from Android 6; before that keep the default bar
+            window.setStatusBarColor(Color.WHITE);
+            int bars = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            if (Build.VERSION.SDK_INT >= 26) {
+                window.setNavigationBarColor(Color.WHITE);
+                bars |= 0x10; // View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR (API 26)
+            }
+            window.getDecorView().setSystemUiVisibility(bars);
         }
-        window.getDecorView().setSystemUiVisibility(bars);
         root = new FrameLayout(this);
         root.setFitsSystemWindows(true); // Android 15 draws edge to edge; keep clear of the system bars
         root.setBackgroundColor(Color.WHITE);
@@ -248,6 +252,14 @@ public class MainActivity extends Activity {
     // ------------------------------------------------------------------ the web app
 
     private void showWeb() {
+        if (webViewTooOld()) {
+            showWebViewUpdate();
+            return;
+        }
+        openWeb();
+    }
+
+    private void openWeb() {
         closeWeb();
         root.removeAllViews();
         web = new WebView(this);
@@ -314,6 +326,64 @@ public class MainActivity extends Activity {
                 pageFailed = true;
                 showOffline();
             }
+        }
+
+        @Override
+        @SuppressWarnings("deprecation")
+        public void onReceivedError(WebView view, int code, String description, String url) {
+            if (Build.VERSION.SDK_INT < 23) { // Android 5.x reports page errors only here
+                pageFailed = true;
+                showOffline();
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ old system browser (WebView)
+
+    /** The web app needs a Chrome 84+ engine; Android 5-7 phones may still carry an older WebView. */
+    private boolean webViewTooOld() {
+        try {
+            Matcher m = Pattern.compile("Chrome/(\\d+)").matcher(WebSettings.getDefaultUserAgent(this));
+            return m.find() && Integer.parseInt(m.group(1)) < 84;
+        } catch (RuntimeException e) {
+            return false; // no WebView information: just try
+        }
+    }
+
+    private void showWebViewUpdate() {
+        closeWeb();
+        root.removeAllViews();
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        box.setGravity(Gravity.CENTER_VERTICAL);
+        box.setPadding(dp(24), dp(24), dp(24), dp(24));
+        Button update = button("تحديث من متجر Play", true);
+        Button anyway = button("متابعة على أي حال", false);
+        update.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                openStore("com.google.android.webview");
+            }
+        });
+        anyway.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                openWeb();
+            }
+        });
+        box.addView(label("متصفح النظام على هذا الموبايل قديم", 22, TEXT, true));
+        add(box, label("رُشد يحتاج نسخة أحدث من «Android System WebView» (أو Chrome). حدّثها من متجر Play ثم افتح رُشد من جديد.", 16, TEXT, false), 12);
+        add(box, update, 24);
+        add(box, anyway, 10);
+        root.addView(box, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    private void openStore(String packageName) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + packageName)));
+        } catch (ActivityNotFoundException e) {
+            openOutside("https://play.google.com/store/apps/details?id=" + packageName);
         }
     }
 

@@ -2,10 +2,10 @@
 <!-- رُشد للأندرويد: a thin native shell around the Rushd web app running on the pharmacy's PC or server. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.rushd.rx"
-    android:versionCode="1"
-    android:versionName="1.0.0">
+    android:versionCode="2"
+    android:versionName="1.0.1">
 
-    <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="35" />
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="35" />
 
     <!-- The only permission: talking to the Rushd server. The camera is used through the
          phone's camera app, so no camera or storage permission is requested. -->
