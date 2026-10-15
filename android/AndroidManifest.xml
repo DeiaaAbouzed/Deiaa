@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- رُشد للأندرويد: a thin native shell around the Rushd web app running on the pharmacy's PC or server. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.rushd.rx"
+    android:versionCode="1"
+    android:versionName="1.0.0">
+
+    <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="35" />
+
+    <!-- The only permission: talking to the Rushd server. The camera is used through the
+         phone's camera app, so no camera or storage permission is requested. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Android 11+ only lets the app see camera apps it declares it will ask for. -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+    </queries>
+
+    <!-- usesCleartextTraffic: the desktop version serves the pharmacy Wi-Fi over plain HTTP.
+         The app itself refuses http:// addresses outside private networks (ServerAddress). -->
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Hands the camera app a file to write the prescription photo into; private to this app. -->
+        <provider
+            android:name=".CaptureProvider"
+            android:authorities="com.rushd.rx.captures"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>

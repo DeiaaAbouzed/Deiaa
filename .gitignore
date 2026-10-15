@@ -4,6 +4,11 @@
 *.key
 *.rushd
 *.backup
+# Android signing keys (an app update must be signed with the same key - back it up, never commit it)
+*.p12
+*.jks
+*.keystore
+*.pass
 .env
 .env.*
 !.env.example

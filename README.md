@@ -61,7 +61,15 @@ flowchart LR
 - البيانات مشفرة في `%LOCALAPPDATA%\Rushd` خارج مجلد البرنامج، فالتحديث لنسخة أحدث لا يمس بياناتك. التفاصيل في `README-AR.txt` داخل الملف.
 - ويندوز 10 أو 11 (64 بت). لبناء الملف من الكود: `python desktop/build_windows.py`.
 
-### ١-ب) تجربة من الكود مباشرة (للمطورين)
+### ١-ب) تطبيق أندرويد
+
+- ثبّت الملف `Rushd-Android-1.0.0.apk` على الموبايل (اسمح بالتثبيت من مصادر غير معروفة عند السؤال).
+- شغّل رُشد على كمبيوتر الصيدلية بملف **`Share-with-phones`**، واجعل الموبايل على نفس الواي فاي.
+- افتح التطبيق واضغط **«ابحث عن رُشد على الواي فاي»** — يجد الكمبيوتر وحده، أو اكتب العنوان الظاهر عليه أو عنوان خادمك (https).
+- يضيف التطبيق: كاميرا الموبايل لتصوير الروشتة، طباعة الملصقات عبر طابعات أندرويد، ومنع لقطات الشاشة لحماية بيانات المرضى.
+- أندرويد 7.0 أو أحدث. لبنائه من الكود: `python android/build_apk.py` (يحتاج حزم أدوات أندرويد من Ubuntu، انظر أول الملف).
+
+### ١-ج) تجربة من الكود مباشرة (للمطورين)
 
 يحتاج Python 3.11 أو أحدث.
 
@@ -161,6 +169,7 @@ backend/rushd/
                import-dataset · train · export-model/import-model (headless GPU training)
 frontend/      Arabic RTL PWA (index.html, css/, js/lib, js/components, js/views)
 desktop/       Windows package: bundled CPython (NuGet, SHA-512 checked) + launcher; build_windows.py
+android/       Android app: WebView shell (camera, printing, Wi-Fi discovery, FLAG_SECURE); build_apk.py
 ```
 
 ```bash
