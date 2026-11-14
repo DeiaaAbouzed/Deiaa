@@ -71,8 +71,7 @@ def descriptives(df, variables, group=None):
             lines_ar.append(f"• {tag}: التوزيع قريب من الطبيعي؛ يُعرض المتوسط ± الانحراف المعياري = {r['Mean']:.2f} ± {r['SD']:.2f}.")
     res.interpret("\n".join(lines_en), "\n".join(lines_ar))
     if group and len(variables) == 1:
-        res.figure(F.group_plot({k.split(" | ")[1]: v for k, v in hist_data.items()}, ylabel=variables[0], xlabel=group),
-                   f"{variables[0]} by {group} (error bars: {F.SETTINGS.error_bar}).")
+        res.figure_auto(F.group_plot({k.split(" | ")[1]: v for k, v in hist_data.items()}, ylabel=variables[0], xlabel=group))
     res.figure(F.histogram(hist_data, xlabel=", ".join(variables)), "Histograms with fitted normal density.")
     return res
 

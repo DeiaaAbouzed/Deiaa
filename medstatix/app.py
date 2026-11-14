@@ -16,6 +16,10 @@ def selftest() -> int:
         dab = IC.ihc_dab(img)[0]["DAB positive area %"]
         lines.append(f"{os.path.basename(f)}: integrity={rep['passed']} DAB%={dab:.2f}")
         ok &= bool(rep["passed"]) or "IHC" in f
+        qc = IC.image_qc(img)
+        _, _, rep2, _ = IC.auto_enhance(img, qc["steps"])
+        lines.append(f"   QC score={qc['score']} auto-enhance integrity={rep2['passed']}")
+        ok &= bool(rep2["passed"])
     import scipy.stats, statsmodels.api  # noqa: F401
     lines.append("OK" if ok else "FAIL")
     print("\n".join(lines))

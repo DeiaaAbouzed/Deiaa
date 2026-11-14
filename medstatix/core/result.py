@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 APP_NAME = "MedStatix Pro"
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.2.0"
 
 
 # ----------------------------------------------------------------------------
@@ -127,6 +127,12 @@ class Result:
         self.blocks.append(Block("figure", fig, caption))
         return self
 
+    def figure_auto(self, fig):
+        """Figure whose caption is generated (and kept up to date) from its editable spec."""
+        from ..plots.groupfig import caption_for
+        self.blocks.append(Block("figure", fig, caption_for(fig._mx_spec)))
+        return self
+
     # -- accessors ----------------------------------------------------------
     @property
     def tables(self):
@@ -148,12 +154,12 @@ class Result:
                 out[c] = [fmt_num(v) for v in out[c]]
         return out
 
-    def to_html(self, embed_figures: bool = True, fig_ids: dict | None = None) -> str:
+    def to_html(self, embed_figures: bool = True, fig_ids: dict | None = None, counters: dict | None = None) -> str:
         parts = [f'<div class="result"><h2>{html.escape(self.title)}</h2>']
         if self.subtitle:
             parts.append(f'<div class="subtitle">{html.escape(self.subtitle)}</div>')
-        tcount = 0
-        fcount = 0
+        counters = counters if counters is not None else {"t": 0, "f": 0}
+        tcount, fcount = counters["t"], counters["f"]
         for b in self.blocks:
             if b.kind == "heading":
                 parts.append(f"<h3>{html.escape(b.content)}</h3>")
@@ -186,9 +192,19 @@ class Result:
                     src = "data:image/png;base64," + fig_to_base64(b.content, dpi=110)
                 else:
                     src = ""
-                parts.append(f'<div class="figure"><img src="{src}" width="560"><div class="caption">{html.escape(cap)}</div></div>')
+                parts.append(f'<div class="figure"><img src="{src}" width="{fig_width_px(b.content)}"><div class="caption">'
+                             f'<b>{html.escape(cap.split(".")[0])}.</b>{html.escape(cap[len(cap.split(".")[0]) + 1:])}</div></div>')
+        counters["t"], counters["f"] = tcount, fcount
         parts.append("</div>")
         return "\n".join(parts)
+
+
+def fig_width_px(fig, px_per_inch=118):
+    """Display width in the results view, proportional to the physical figure width (capped)."""
+    try:
+        return int(min(820, max(420, fig.get_size_inches()[0] * px_per_inch)))
+    except Exception:
+        return 560
 
 
 def _card(inner, bg, edge, cls, attrs=""):

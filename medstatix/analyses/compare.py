@@ -77,8 +77,8 @@ def ttest_ind(df, outcome, group, alternative="two-sided"):
                 f"unequal-variances t-test; Cohen's d was computed as the standardized effect size. Normality was checked with the "
                 f"Shapiro-Wilk test and homogeneity of variance with Levene's test. {n1} vs {n2}: t({we.df:.1f}) = {we.statistic:.2f}, "
                 f"{pstr(we.pvalue)}, mean difference = {diff:.2f} (95% CI {ci_w.low:.2f} to {ci_w.high:.2f}), d = {d:.2f}.")
-    res.figure(F.group_plot(g, ylabel=outcome, xlabel=group, comparisons=[(n1, n2, we.pvalue)]),
-               f"{outcome} by {group}. Error bars: {F.SETTINGS.error_bar}. Welch's t-test {pstr(we.pvalue)}.")
+    res.figure_auto(F.group_plot(g, ylabel=outcome, xlabel=group, comparisons=[(n1, n2, we.pvalue)],
+                                 test_name=f"Welch's t-test ({pstr(we.pvalue)})"))
     return res
 
 
@@ -114,8 +114,8 @@ def ttest_paired(df, var1, var2, alternative="two-sided"):
                   + (" الفروق غير طبيعية التوزيع — أكّد باختبار ويلكوكسون." if sw[1] < 0.05 else ""))
     res.methods(f"Paired measurements were compared with a two-tailed paired t-test. Mean difference = {diff.mean():.2f} "
                 f"(95% CI {ci.low:.2f} to {ci.high:.2f}), t({r.df}) = {r.statistic:.2f}, {pstr(r.pvalue)}, dz = {dz:.2f}.")
-    res.figure(F.group_plot({var1: a, var2: b}, ylabel="Value", comparisons=[(var1, var2, r.pvalue)], paired=True),
-               f"Paired values (lines join the same subject). Paired t-test {pstr(r.pvalue)}.")
+    res.figure_auto(F.group_plot({var1: a, var2: b}, ylabel="Value", comparisons=[(var1, var2, r.pvalue)], paired=True,
+                                 test_name=f"paired t-test ({pstr(r.pvalue)}); lines join the same subject"))
     return res
 
 
@@ -180,8 +180,8 @@ def mannwhitney(df, outcome, group, alternative="two-sided"):
                   f"(U = {U:.1f}، {pstr(r.pvalue)}) بحجم أثر {magnitude_r(rbc)[1]} (r = {rbc:.2f}).")
     res.methods(f"Because {outcome} was not normally distributed, groups were compared with the two-tailed Mann-Whitney U test; "
                 f"data are presented as median (IQR). U = {U:.1f}, {pstr(r.pvalue)}, rank-biserial r = {rbc:.2f}.")
-    res.figure(F.group_plot(g, ylabel=outcome, xlabel=group, comparisons=[(n1, n2, r.pvalue)], plot_type="Box + points",
-                            center="median"), f"{outcome} by {group} (box: median and IQR). Mann-Whitney {pstr(r.pvalue)}.")
+    res.figure_auto(F.group_plot(g, ylabel=outcome, xlabel=group, comparisons=[(n1, n2, r.pvalue)], plot_type="Box + points",
+                                 center="median", test_name=f"Mann-Whitney U test ({pstr(r.pvalue)})"))
     return res
 
 
@@ -213,8 +213,8 @@ def wilcoxon(df, var1, var2, alternative="two-sided"):
     s = sig_words(r.pvalue)
     res.interpret(f"The median paired difference was {np.median(diff):.2f}; the change is {s[0]} ({pstr(r.pvalue)}), effect r = {rbc:.2f}.",
                   f"بلغ وسيط الفرق المزدوج {np.median(diff):.2f}؛ والتغير {s[1]} ({pstr(r.pvalue)})، حجم الأثر r = {rbc:.2f}.")
-    res.figure(F.group_plot({var1: a, var2: b}, ylabel="Value", comparisons=[(var1, var2, r.pvalue)], paired=True,
-                            plot_type="Box + points", center="median"), "Paired values; Wilcoxon signed-rank test.")
+    res.figure_auto(F.group_plot({var1: a, var2: b}, ylabel="Value", comparisons=[(var1, var2, r.pvalue)], paired=True,
+                                 plot_type="Box + points", center="median", test_name="Wilcoxon signed-rank test; lines join the same subject"))
     return res
 
 
@@ -290,6 +290,7 @@ def posthoc_table(groups: dict, method: str, mse=None, df_err=None):
     tab["Summary"] = [("****" if p < 1e-4 else "***" if p < 1e-3 else "**" if p < 0.01 else "*" if p < 0.05 else "ns")
                       for p in tab["p (adj.)"]]
     comps = [(r[0], r[1], r[6]) for r in rows if r[6] < 0.05]
+    tab.attrs["all_pairs"] = [(r[0], r[1], r[6]) for r in rows]
     return tab, comps
 
 
@@ -377,8 +378,11 @@ def anova1(df, outcome, group, posthoc="Tukey HSD"):
     res.methods(f"Differences among groups were analysed by one-way ANOVA followed by {method} post hoc test. Assumptions were "
                 f"checked with Shapiro-Wilk (normality) and Levene's test (homogeneity of variance); Welch's ANOVA was computed "
                 f"as a robust alternative. F({dfb}, {dfw}) = {Fv:.2f}, {pstr(p)}, η² = {eta2:.3f}. P < 0.05 was considered significant.")
-    res.figure(F.group_plot(g, ylabel=outcome, xlabel=group, comparisons=comps),
-               f"{outcome} by {group}. Error bars: {F.SETTINGS.error_bar}. *p < 0.05, **p < 0.01, ***p < 0.001, ****p < 0.0001 ({method}).")
+    shown = tab2 if (lev.pvalue < 0.05 and posthoc == "Tukey HSD") else tab
+    used = "Games-Howell" if shown is not tab else method
+    _tn = f"one-way ANOVA followed by {used} post hoc test" if used != "None" else "one-way ANOVA"
+    res.figure_auto(F.group_plot(g, ylabel=outcome, xlabel=group, comparisons=shown.attrs.get("all_pairs", comps) if len(shown) else [],
+                                 test_name=_tn))
     return res
 
 
@@ -431,8 +435,9 @@ def kruskal(df, outcome, group, adjust="Holm"):
                   + ("الأزواج الدالة: " + "؛ ".join(f"{a} مقابل {b}" for a, b, _ in comps) if comps else "لا توجد أزواج دالة بعد التصحيح."))
     res.methods(f"Groups were compared with the Kruskal-Wallis H test followed by Dunn's test with {adjust} correction; "
                 f"data are median (IQR). H({k-1}) = {H:.2f}, {pstr(p)}.")
-    res.figure(F.group_plot(g, ylabel=outcome, xlabel=group, comparisons=comps, plot_type="Box + points", center="median"),
-               f"{outcome} by {group}; Kruskal-Wallis with Dunn's test ({adjust}).")
+    res.figure_auto(F.group_plot(g, ylabel=outcome, xlabel=group, center="median", plot_type="Box + points",
+                                 comparisons=[(r["Group A"], r["Group B"], r["p (adj.)"]) for _, r in tab.iterrows()],
+                                 test_name=f"Kruskal-Wallis test followed by Dunn's test ({adjust} adjustment)"))
     return res
 
 

@@ -37,6 +37,14 @@ MedStatix Pro brings together what researchers usually spread across SPSS, Graph
 | Meta-analysis | FE/RE (REML, DL), OR/RR/MD/SMD/generic, I², τ², prediction interval, Egger, leave-one-out, forest and funnel plots |
 | Sample size | t-tests, proportions, ANOVA, correlation, log-rank (Schoenfeld), diagnostic sensitivity (Buderer), Mead's resource equation for animal studies |
 
+## New in v1.2
+
+- **Prism-style figure editor:** chart type (scatter, bar, box, violin), colour per group and palettes, point size/shape, fonts, axes (range, log), group order, size in mm. Significance: significant pairs, all pairs, versus a reference group or a custom selection; brackets are stacked automatically so they never overlap; stars, exact p or both; standard or GraphPad thresholds; ns on/off; symbols mode (* / #) for many groups.
+- **Recommendations after loading data:** a ranked list of the most suitable analyses, each with the reason and a one-click run.
+- **Captions:** every table and figure gets an automatic, editable caption, numbered across the whole output.
+- **Export:** every statistics figure and histology image at 150, 300, 600 or 1200 dpi as TIFF, PNG, JPEG, PDF, SVG or EPS, optionally at journal column width.
+- **Histology image inspection:** 10 checks (uneven illumination, colour cast, exposure/contrast, clipping, mid-tones, faded stain, noise, focus with soft areas, stain vs reference H&E, folds/debris), a 0–100 quality score, problem areas shown on the image, and suggested global corrections the user ticks and applies (or one-click auto-enhance). Every result is verified by the integrity check stage by stage; blur, clipping and folds are only flagged because they cannot be honestly corrected. New global tools: flat-field shading correction (second-order surface fitted to background) and mild unsharp masking.
+
 ## Histology & IHC studio (v1.1)
 
 A tab for preparing histopathology and immunohistochemistry images for Q1 journals, built around image integrity:
@@ -73,7 +81,7 @@ python run_medstatix.py
 
 **Option A, on a Windows PC:** install Python 3.12 (64-bit) and, optionally, [Inno Setup 6](https://jrsoftware.org/isinfo.php), then double-click `build\build_windows.bat`. You get:
 - `dist\MedStatixPro\MedStatixPro.exe`, a portable app with no Python needed
-- `dist\installer\MedStatixPro-Setup-1.1.1.exe`, an installer with Start-menu and desktop shortcuts
+- `dist\installer\MedStatixPro-Setup-1.2.0.exe`, an installer with Start-menu and desktop shortcuts
 
 **Option B, automatically on GitHub:** push this folder to a GitHub repository. The workflow `.github/workflows/build-windows.yml` builds the installer and a portable ZIP on Windows. Run it from the *Actions* tab, or push a tag such as `v1.0.0` to publish a release.
 

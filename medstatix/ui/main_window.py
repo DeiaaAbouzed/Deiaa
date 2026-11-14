@@ -120,6 +120,8 @@ class MainWindow(QMainWindow):
         self.a_paste = self._act("📋  " + tr("paste"), self.paste_data, "Ctrl+Shift+V")
         self.a_smart = self._act("🧠  " + tr("smart"), self.smart_analyze, "Ctrl+M")
         self.a_wizard = self._act("🧭  " + tr("wizard"), self.wizard, "Ctrl+W")
+        self.a_recs = self._act("⭐  " + ("التوصيات" if SETTINGS.language == "ar" else "Recommendations"),
+                                lambda: self._need_data() and self.import_assistant([]), "Ctrl+R")
         self.a_word = self._act("📝  " + tr("export_word"), lambda: self.export("docx"), "Ctrl+E")
         self.a_excel = self._act("📗  " + tr("export_excel"), lambda: self.export("xlsx"))
         self.a_html = self._act("🌐  " + tr("export_html"), lambda: self.export("html"))
@@ -134,7 +136,7 @@ class MainWindow(QMainWindow):
             m.addAction(a)
         sm = m.addMenu("🧪  " + tr("samples"))
         for name in make_sample_datasets():
-            sm.addAction(name, lambda n=name: self.load_df(make_sample_datasets()[n], n))
+            sm.addAction(name, lambda n=name: (self.load_df(make_sample_datasets()[n], n), self.import_assistant([])))
         m.addSeparator(); m.addAction(self.a_word); m.addAction(self.a_excel); m.addAction(self.a_html)
         m.addSeparator(); m.addAction(self._act(tr("exit"), self.close, "Ctrl+Q"))
         d = mb.addMenu(tr("data"))
@@ -148,7 +150,8 @@ class MainWindow(QMainWindow):
         d.addAction(self._act(tr("add_row"), self.add_row)); d.addAction(self._act(tr("del_row"), self.del_rows))
         d.addAction(self._act(tr("add_col"), self.add_col)); d.addAction(self._act(tr("del_col"), self.del_col))
         a = mb.addMenu(tr("analyze"))
-        a.addAction(self.a_smart); a.addAction(self.a_wizard); a.addSeparator()
+        a.addAction(self.a_smart); a.addAction(self.a_wizard); a.addAction(self.a_recs)
+        a.addSeparator()
         for cid, en, ar in CATEGORIES:
             sub = a.addMenu(ar if SETTINGS.language == "ar" else en)
             for aid, an in REGISTRY.items():
@@ -175,6 +178,7 @@ class MainWindow(QMainWindow):
         tb.addAction(self.a_smart)
         tb.widgetForAction(self.a_smart).setObjectName("primary")
         tb.addAction(self.a_wizard)
+        tb.addAction(self.a_recs)
         tb.addSeparator()
         for a in (self.a_word, self.a_excel, self.a_settings, self.a_lang):
             tb.addAction(a)
@@ -258,8 +262,20 @@ class MainWindow(QMainWindow):
         return v
 
     def _build_output_tab(self):
+        A = SETTINGS.language == "ar"
+        w = QWidget(); v = QVBoxLayout(w); v.setContentsMargins(2, 2, 2, 2)
+        bar = QHBoxLayout()
+        b1 = QPushButton("📝  " + ("تعديل التعليقات (Captions)" if A else "Edit captions")); b1.clicked.connect(self.edit_captions)
+        b2 = QPushButton("✏️  " + ("محرر الرسم (نمط Prism)" if A else "Figure editor (Prism style)")); b2.setObjectName("primary")
+        b2.clicked.connect(lambda: (self.tabs.setCurrentIndex(3), self.edit_current_fig()))
+        b3 = QPushButton("💾  " + ("حفظ كل الرسوم…" if A else "Save all figures…")); b3.clicked.connect(self.export_all_figs)
+        for b in (b2, b1, b3):
+            bar.addWidget(b)
+        bar.addStretch(1)
+        v.addLayout(bar)
         self.out = QTextBrowser(); self.out.setOpenExternalLinks(True)
-        return self.out
+        v.addWidget(self.out, 1)
+        return w
 
     def _build_fig_tab(self):
         w = QWidget(); lay = QHBoxLayout(w)
@@ -272,6 +288,11 @@ class MainWindow(QMainWindow):
         cw = QWidget(); cw.setLayout(self.canvas_box)
         lay.addWidget(cw, 1)
         panel = QGroupBox(tr("tab_figs")); f = QFormLayout(panel)
+        A = SETTINGS.language == "ar"
+        be = QPushButton("✏️  " + ("محرر الرسم الاحترافي (Prism)" if A else "Full figure editor (Prism)")); be.setObjectName("primary")
+        be.setToolTip("نوع الرسم، الألوان، النقاط، الخطوط، المحاور، علامات الدلالة، التعليق" if A else
+                      "Chart type, colours, points, fonts, axes, significance marks, caption")
+        be.clicked.connect(self.edit_current_fig); f.addRow(be)
         self.e_title, self.e_x, self.e_y = QLineEdit(), QLineEdit(), QLineEdit()
         self.e_ymin, self.e_ymax = QLineEdit(), QLineEdit()
         for k, wdg in [("fig_title", self.e_title), ("fig_x", self.e_x), ("fig_y", self.e_y), ("fig_ymin", self.e_ymin), ("fig_ymax", self.e_ymax)]:
@@ -383,6 +404,14 @@ class MainWindow(QMainWindow):
             self.load_df(SI.columns_to_groups(self.df, value_name=title), self.dataset_name)
             self.import_assistant([{"en": "Columns were converted to a Group / Value table.",
                                     "ar": "تم تحويل الأعمدة إلى جدول (المجموعة / القيمة).", "level": "info"}])
+        elif c[0] == "rec":
+            kind = c[1]
+            if kind == "smart":
+                self.run_smart(c[2], c[3])
+            elif kind == "run":
+                self.execute(c[2], {k: v for k, v in c[3].items() if v is not None})
+            else:
+                self.open_analysis(c[2], {k: v for k, v in c[3].items() if v is not None})
         elif c[0] == "smart_all":
             self.run_smart(c[2], c[1])
         elif c[0] == "describe":
@@ -596,7 +625,7 @@ class MainWindow(QMainWindow):
             self.open_analysis(dlg.choice)
 
     # ------------------------------------------------------------------ output rendering
-    def _png(self, fig, dpi=110):
+    def _png(self, fig, dpi=160):
         key = id(fig)
         if key not in self.png_cache:
             self.png_cache[key] = fig_to_png_bytes(fig, dpi=dpi)
@@ -613,7 +642,8 @@ class MainWindow(QMainWindow):
                 doc.addResource(QTextDocument.ImageResource, QUrl(url), img)
                 ids[id(b.content)] = url
         if self.entries:
-            body = "".join(e["result"].to_html(fig_ids=ids) for e in self.entries)
+            cnt = {"t": 0, "f": 0}
+            body = "".join(e["result"].to_html(fig_ids=ids, counters=cnt) for e in self.entries)
         else:
             body = self._welcome_html()
         doc.setHtml(f"<html><body>{body}</body></html>")
@@ -693,6 +723,16 @@ class MainWindow(QMainWindow):
         if not self.current_fig:
             return
         row, fig = self.current_fig
+        spec = getattr(fig, "_mx_spec", None)
+        if spec is not None:
+            spec = spec.copy()
+            spec.title, spec.xlabel, spec.ylabel = self.e_title.text(), self.e_x.text(), self.e_y.text()
+            try:
+                spec.y_min, spec.y_max = float(self.e_ymin.text()), float(self.e_ymax.text())
+            except ValueError:
+                pass
+            self._replace_fig(row, spec)
+            return
         ax = fig.axes[0]
         ax.set_title(self.e_title.text()); ax.set_xlabel(self.e_x.text()); ax.set_ylabel(self.e_y.text())
         try:
@@ -702,6 +742,73 @@ class MainWindow(QMainWindow):
         fig.canvas.draw()
         self.png_cache.pop(id(fig), None)
         self.refresh_output()
+
+    def _replace_fig(self, row, spec, caption=None):
+        from ..plots.groupfig import render, caption_for
+        ei, fi, b = self.all_figs()[row]
+        self.png_cache.pop(id(b.content), None)
+        b.content = render(spec)
+        b.caption = caption or caption_for(spec)
+        self.entries[ei].setdefault("edited", {})[fi] = spec
+        self.refresh_output()
+        self.refresh_fig_list()
+        if 0 <= row < self.fig_list.count():
+            self.fig_list.setCurrentRow(row)
+
+    def edit_current_fig(self):
+        A = SETTINGS.language == "ar"
+        if not self.current_fig:
+            QMessageBox.information(self, APP_NAME, "لا توجد رسوم بعد. شغّل تحليلًا أولًا." if A else "No figure yet. Run an analysis first.")
+            return
+        row, fig = self.current_fig
+        spec = getattr(fig, "_mx_spec", None)
+        if spec is None:
+            QMessageBox.information(self, APP_NAME,
+                                    "المحرر الكامل متاح لرسوم مقارنة المجموعات. لهذا الرسم استخدم الحقول الجانبية والألوان العامة."
+                                    if A else "The full editor is available for group-comparison figures. For this figure use the side panel.")
+            return
+        from .figeditor import FigureEditorDialog
+        dlg = FigureEditorDialog(spec, self)
+        if dlg.exec():
+            _fig, cap = dlg.final()
+            self._replace_fig(row, dlg.spec, cap)
+
+    def edit_captions(self):
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTableWidget, QTableWidgetItem
+        A = SETTINGS.language == "ar"
+        items = []
+        t = f = 0
+        for e in self.entries:
+            for b in e["result"].blocks:
+                if b.kind == "table":
+                    t += 1; items.append((f"Table {t}", b))
+                elif b.kind == "figure":
+                    f += 1; items.append((f"Figure {f}", b))
+        if not items:
+            return
+        dlg = QDialog(self); dlg.setWindowTitle("تعديل التعليقات" if A else "Edit captions"); dlg.resize(980, 620)
+        v = QVBoxLayout(dlg)
+        hint = QLabel("عدّل نص أي تعليق مباشرة (الترقيم تلقائي). تُستخدم التعليقات في النتائج وملفات Word وHTML وExcel."
+                      if A else "Edit any caption directly (numbering is automatic). Captions are used in Results and in Word/HTML/Excel exports.")
+        hint.setWordWrap(True); hint.setObjectName("hint"); v.addWidget(hint)
+        tw = QTableWidget(len(items), 2); tw.setHorizontalHeaderLabels(["#", "التعليق" if A else "Caption"])
+        tw.horizontalHeader().setStretchLastSection(True); tw.setColumnWidth(0, 90); tw.setWordWrap(True)
+        for i, (lab, b) in enumerate(items):
+            it = QTableWidgetItem(lab); it.setFlags(Qt.ItemIsEnabled); tw.setItem(i, 0, it)
+            tw.setItem(i, 1, QTableWidgetItem(b.caption))
+        tw.resizeRowsToContents()
+        v.addWidget(tw, 1)
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel); bb.accepted.connect(dlg.accept); bb.rejected.connect(dlg.reject)
+        v.addWidget(bb)
+        if dlg.exec():
+            for i, (lab, b) in enumerate(items):
+                txt = tw.item(i, 1).text().strip()
+                if txt != b.caption:
+                    b.caption = txt
+                    spec = getattr(b.content, "_mx_spec", None) if b.kind == "figure" else None
+                    if spec is not None:
+                        spec.caption = txt
+            self.refresh_output()
 
     def quick_restyle(self):
         SETTINGS.palette = self.q_pal.currentText(); SETTINGS.fig_style = self.q_style.currentText()
@@ -723,6 +830,12 @@ class MainWindow(QMainWindow):
                     e["result"], _ = auto_analyze(e["df"], e["kwargs"]["outcome"], e["kwargs"]["factor"])
                 else:
                     e["result"] = run(e["aid"], e["df"], **e["kwargs"])
+                if e.get("edited"):
+                    from ..plots.groupfig import render, caption_for
+                    figs = e["result"].figures
+                    for fi, spec in e["edited"].items():
+                        if fi < len(figs):
+                            figs[fi].content = render(spec); figs[fi].caption = caption_for(spec)
             self.png_cache.clear()
             self.refresh_output(); self.refresh_fig_list()
         finally:
@@ -730,26 +843,47 @@ class MainWindow(QMainWindow):
 
     FIG_FILTER = "TIFF 600 dpi (*.tiff);;PNG (*.png);;SVG vector (*.svg);;PDF vector (*.pdf);;EPS (*.eps)"
 
+    def _export_fig_to(self, fig, path, dpi, width_mm):
+        h = None
+        if width_mm:
+            w0, h0 = fig.get_size_inches()
+            h = width_mm * h0 / w0
+        export_figure(fig, path, dpi, width_mm, h)
+
     def export_current_fig(self):
         if not self.current_fig:
             return
-        path, _ = QFileDialog.getSaveFileName(self, tr("export_fig"), "Figure.tiff", self.FIG_FILTER)
+        from .widgets import ExportOptionsDialog
+        dlg = ExportOptionsDialog(self)
+        if not dlg.exec():
+            return
+        ext, dpi, width = dlg.values()
+        path, _ = QFileDialog.getSaveFileName(self, tr("export_fig"), f"Figure.{ext}", f"{ext.upper()} (*.{ext})")
         if path:
-            export_figure(self.current_fig[1], path, SETTINGS.export_dpi)
+            if not path.lower().endswith("." + ext) and not (ext == "tiff" and path.lower().endswith(".tif")):
+                path += "." + ext
+            self._export_fig_to(self.current_fig[1], path, dpi, width)
             self.statusBar().showMessage(path, 5000)
 
     def export_all_figs(self):
         figs = self.all_figs()
         if not figs:
             return
+        from .widgets import ExportOptionsDialog
+        dlg = ExportOptionsDialog(self, multiple=True)
+        if not dlg.exec():
+            return
+        ext, dpi, width = dlg.values()
         folder = QFileDialog.getExistingDirectory(self, tr("export_all_figs"))
         if not folder:
             return
-        fmt, ok = QInputDialog.getItem(self, tr("export_all_figs"), "Format", ["tiff", "png", "svg", "pdf", "eps"], 0, False)
-        if ok:
-            for ei, fi, b in figs:
-                export_figure(b.content, os.path.join(folder, f"Figure_{ei+1}_{fi+1}.{fmt}"), SETTINGS.export_dpi)
-            self.statusBar().showMessage(f"{len(figs)} → {folder}", 6000)
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            for n, (ei, fi, b) in enumerate(figs, 1):
+                self._export_fig_to(b.content, os.path.join(folder, f"Figure_{n}.{ext}"), dpi, width)
+        finally:
+            QApplication.restoreOverrideCursor()
+        self.statusBar().showMessage(f"{len(figs)} → {folder}", 6000)
 
     # ------------------------------------------------------------------ export
     def export(self, kind):

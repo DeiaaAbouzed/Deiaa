@@ -85,9 +85,9 @@ def rmanova(df, measures, adjust="Bonferroni"):
     res.methods(f"Changes across the {k} time points were analysed by one-way repeated-measures ANOVA; sphericity was tested "
                 f"with Mauchly's test and the Greenhouse-Geisser correction applied when violated. Pairwise comparisons used paired "
                 f"t-tests with {adjust} correction.")
-    res.figure(F.group_plot({m: Y[:, i] for i, m in enumerate(measures)}, ylabel="Value", paired=True,
-                            comparisons=[(r[0], r[1], p) for r, p in zip(pr, padj) if p < 0.05]),
-               "Individual trajectories with group mean; significant pairwise differences marked.")
+    res.figure_auto(F.group_plot({m: Y[:, i] for i, m in enumerate(measures)}, ylabel="Value", paired=True,
+                                 comparisons=[(r[0], r[1], p) for r, p in zip(pr, padj)],
+                                 test_name=f"repeated-measures ANOVA with paired t-tests ({adjust} correction); lines join the same subject"))
     return res
 
 

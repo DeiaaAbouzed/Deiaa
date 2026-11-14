@@ -237,8 +237,7 @@ class PanelComposer(QDialog):
         f = QFormLayout()
         self.cols = QSpinBox(); self.cols.setRange(1, 6); self.cols.setValue(2)
         self.lbls = QLineEdit(""); self.lbls.setPlaceholderText("A, B, C, D …")
-        self.dpi = QComboBox(); self.dpi.addItems(["300", "600", "1200"]); self.dpi.setCurrentText("600")
-        f.addRow(T("Columns", "عدد الأعمدة"), self.cols); f.addRow(T("Panel labels", "حروف اللوحات"), self.lbls); f.addRow("DPI", self.dpi)
+        f.addRow(T("Columns", "عدد الأعمدة"), self.cols); f.addRow(T("Panel labels", "حروف اللوحات"), self.lbls)
         lay.addLayout(f)
         bb = QDialogButtonBox()
         ex = bb.addButton(T("Export panel figure…", "تصدير اللوحة…"), QDialogButtonBox.AcceptRole); ex.setObjectName("primary")
@@ -278,10 +277,130 @@ class PanelComposer(QDialog):
             return
         labels = [s.strip() for s in self.lbls.text().split(",") if s.strip()] or None
         fig = IC.compose_panels(self.images, ncols=self.cols.value(), labels=labels)
-        path, _ = QFileDialog.getSaveFileName(self, "", "Figure_panel.tiff", "TIFF (*.tiff);;PNG (*.png);;JPEG (*.jpg)")
+        from .widgets import ExportOptionsDialog
+        dlg = ExportOptionsDialog(self, allow_width=True, raster=True)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        ext, dpi, width_mm = dlg.values()
+        path, _ = QFileDialog.getSaveFileName(self, "", f"Figure_panel.{ext}", f"{ext.upper()} (*.{ext})")
         if path:
-            IC.save_image(fig, path, int(self.dpi.currentText()))
+            if not path.lower().endswith("." + ext):
+                path += "." + ext
+            IC.save_image(fig, path, dpi, width_mm)
             QMessageBox.information(self, "", path)
+
+
+# ------------------------------------------------------------------ image quality control
+STATUS_COL = {"ok": ("#E8F5E9", "#2E7D32"), "warn": ("#FFF4E5", "#B26A00"), "bad": ("#FDECEA", "#C62828"), "na": ("#F1F3F6", "#5B6B82")}
+STATUS_TXT = {"ok": ("Good", "جيد"), "warn": ("Needs attention", "يحتاج انتباه"), "bad": ("Problem", "مشكلة"), "na": ("N/A", "غير متاح")}
+
+
+def score_colour(sc):
+    return "#2E7D32" if sc >= 85 else "#B26A00" if sc >= 65 else "#C62828"
+
+
+def qc_html(before, after=None):
+    A = SETTINGS.language == "ar"
+    d = " dir='rtl'" if A else ""
+    sb = before["score"]
+    head = T("Image quality", "جودة الصورة")
+    score = f"<span style='color:{score_colour(sb)};font-size:18px'><b>{sb}</b></span>/100"
+    if after:
+        sa = after["score"]
+        score += f" &nbsp;→&nbsp; <span style='color:{score_colour(sa)};font-size:18px'><b>{sa}</b></span>/100"
+    html = f"<div{d}><h4>{head}: {score}</h4><table cellpadding='3' cellspacing='0' width='100%'>"
+    cur = after or before
+    for c in cur["checks"]:
+        if c["status"] == "na":
+            continue
+        bg, fg = STATUS_COL[c["status"]]
+        nm = c["name_ar"] if A else c["name_en"]
+        st = STATUS_TXT[c["status"]][1 if A else 0]
+        html += f"<tr><td bgcolor='{bg}'>{nm}</td><td bgcolor='{bg}'>{c['value']}</td><td bgcolor='{bg}' style='color:{fg}'><b>{st}</b></td></tr>"
+    html += "</table>"
+    if after:
+        html += "<p style='color:#5B6B82;font-size:11px'>" + T("Table shows the image after correction.", "الجدول يعرض حالة الصورة بعد التصحيح.") + "</p>"
+    return html + "</div>"
+
+
+class QCDialog(QDialog):
+    """Shows the quality checks; the user ticks which suggested global corrections to apply."""
+
+    def __init__(self, parent, qc):
+        super().__init__(parent)
+        from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
+        A = SETTINGS.language == "ar"
+        self.qc = qc
+        self.show_areas = False
+        self.setWindowTitle(T("Image inspection", "فحص الصورة"))
+        self.resize(1040, 620)
+        lay = QVBoxLayout(self)
+        sc = qc["score"]
+        top = QLabel(f"<span style='font-size:22px;color:{score_colour(sc)}'><b>{sc}/100</b></span> &nbsp; "
+                     + T("Image quality score", "درجة جودة الصورة") + f" &nbsp;·&nbsp; {T('Stain', 'الصبغة')}: {qc.get('stain', '')}")
+        lay.addWidget(top)
+        hint = QLabel(T("Tick the corrections to apply. All are global (same operation on every pixel), recorded in the edit log, "
+                        "and verified afterwards with the integrity check. Folds, debris, clipping and severe blur are flagged only: "
+                        "they cannot be honestly corrected.",
+                        "اختر التصحيحات المطلوبة. كلها تعديلات كلية (نفس العملية على كل بكسل) تُسجّل في سجل التعديلات ويُتحقق بعدها "
+                        "من سلامة التركيب. الطيات والشوائب وقص الإضاءة والضبابية الشديدة يتم التنبيه عليها فقط لأنها لا تُصحح بأمانة."))
+        hint.setWordWrap(True); hint.setObjectName("hint"); lay.addWidget(hint)
+        rows = [c for c in qc["checks"] if c["status"] != "na"]
+        self.tbl = QTableWidget(len(rows), 4)
+        self.tbl.setHorizontalHeaderLabels([T("Check", "الفحص"), T("Value", "القيمة"), T("Status", "الحالة"),
+                                            T("Finding / suggested correction", "النتيجة / التصحيح المقترح")])
+        self.tbl.verticalHeader().setVisible(False)
+        self.tbl.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.tbl.setWordWrap(True)
+        self.rows = rows
+        for i, c in enumerate(rows):
+            bg, fg = STATUS_COL[c["status"]]
+            it = QTableWidgetItem(c["name_ar"] if A else c["name_en"])
+            if c["fix"] is not None and c["status"] in ("warn", "bad"):
+                it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
+                it.setCheckState(Qt.Checked if c["default_on"] else Qt.Unchecked)
+            vals = [it, QTableWidgetItem(str(c["value"])), QTableWidgetItem(STATUS_TXT[c["status"]][1 if A else 0]),
+                    QTableWidgetItem((c["detail_ar"] if A else c["detail_en"]) + self._fix_text(c))]
+            for j, v in enumerate(vals):
+                v.setBackground(QColor(bg))
+                if j == 2:
+                    v.setForeground(QColor(fg)); f = v.font(); f.setBold(True); v.setFont(f)
+                self.tbl.setItem(i, j, v)
+        hh = self.tbl.horizontalHeader()
+        hh.setSectionResizeMode(0, QHeaderView.ResizeToContents); hh.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(2, QHeaderView.ResizeToContents); hh.setSectionResizeMode(3, QHeaderView.Stretch)
+        self.tbl.resizeRowsToContents()
+        lay.addWidget(self.tbl, 1)
+        bb = QDialogButtonBox()
+        ok = bb.addButton("✨ " + T("Apply selected corrections", "تطبيق التصحيحات المختارة"), QDialogButtonBox.AcceptRole); ok.setObjectName("primary")
+        ar = bb.addButton("🟧 " + T("Show problem areas", "إظهار المناطق المشكلة"), QDialogButtonBox.ActionRole)
+        ar.setEnabled(bool(qc.get("problem_mask") is not None and qc["problem_mask"].any()))
+        ar.clicked.connect(self._areas)
+        bb.addButton(T("Close", "إغلاق"), QDialogButtonBox.RejectRole)
+        bb.accepted.connect(self.accept); bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+
+    @staticmethod
+    def _fix_text(c):
+        if c["fix"] is None or c["status"] not in ("warn", "bad"):
+            return ""
+        nm = IC.OPS[c["fix"]["op"]][1 if SETTINGS.language == "ar" else 0]
+        p = c["fix"].get("params") or {}
+        ps = ", ".join(f"{k} {v}" for k, v in p.items() if not (k == "strength" and v == 1.0))
+        return "\n→ " + T("Fix: ", "التصحيح: ") + nm + (f" ({ps})" if ps else "")
+
+    def _areas(self):
+        self.show_areas = True
+        self.reject()
+
+    def selected_steps(self):
+        steps = []
+        for i, c in enumerate(self.rows):
+            it = self.tbl.item(i, 0)
+            if c["fix"] is not None and it.flags() & Qt.ItemIsUserCheckable and it.checkState() == Qt.Checked:
+                steps.append(c["fix"])
+        steps.sort(key=lambda s: IC.QC_ORDER.index(s["op"]) if s["op"] in IC.QC_ORDER else 99)
+        return steps
 
 
 # ------------------------------------------------------------------ main studio widget
@@ -333,6 +452,15 @@ class HistologyStudio(QWidget):
         il.addWidget(g)
         # enhance
         g = QGroupBox(T("2 · Enhance (global, journal-safe)", "٢ · تحسين الجودة (كلي ومقبول في المجلات)")); f = QFormLayout(g)
+        row = QHBoxLayout()
+        qb = QPushButton("🔍 " + T("Inspect image", "فحص الصورة")); qb.setObjectName("primary"); qb.clicked.connect(self.inspect_image)
+        qb.setToolTip(T("Detect blur, uneven illumination, colour cast, exposure, noise, faded stain and folds, and suggest fixes",
+                        "يكشف الضبابية والإضاءة غير المتساوية والانحراف اللوني والتعريض والضوضاء وبهتان الصبغة والطيات ويقترح التصحيح"))
+        ab = QPushButton("✨ " + T("Auto-enhance", "تحسين تلقائي")); ab.clicked.connect(self.auto_enhance)
+        ab.setToolTip(T("Apply the suggested global corrections and verify that structure is unchanged",
+                        "تطبيق التصحيحات الكلية المقترحة مع التحقق من عدم تغير التركيب"))
+        row.addWidget(qb); row.addWidget(ab); f.addRow(row)
+        self.c_flat = QCheckBox(T("Correct uneven illumination (flat-field)", "تصحيح الإضاءة غير المتساوية (Flat-field)")); f.addRow(self.c_flat)
         self.c_wb = QCheckBox(T("White balance", "توازن الأبيض")); f.addRow(self.c_wb)
         self.c_auto = QCheckBox(T("Auto contrast stretch", "تمديد تباين تلقائي")); f.addRow(self.c_auto)
         self.s_bright = self._slider(-25, 25, 0); f.addRow(T("Brightness", "الإضاءة"), self.s_bright)
@@ -342,6 +470,8 @@ class HistologyStudio(QWidget):
         self.norm = QComboBox(); self.norm.addItems([T("No stain normalization", "بدون توحيد صبغة"), "Reinhard (any stain)", "Macenko (H&E only)"])
         f.addRow(T("Stain", "الصبغة"), self.norm)
         self.s_denoise = self._slider(0, 100, 0); f.addRow(T("Denoise", "إزالة الضوضاء"), self.s_denoise)
+        self.s_sharpen = self._slider(0, 80, 0); f.addRow(T("Sharpen", "زيادة الحدة"), self.s_sharpen)
+        self._sharpen_radius = 1.0
         row = QHBoxLayout()
         ap = QPushButton(T("Apply", "تطبيق")); ap.setObjectName("primary"); ap.clicked.connect(self.apply_enhance)
         rs = QPushButton(T("Reset", "إعادة")); rs.clicked.connect(self.reset_enhance)
@@ -373,6 +503,7 @@ class HistologyStudio(QWidget):
         g = QGroupBox(T("5 · Export", "٥ · التصدير")); f = QFormLayout(g)
         for txt, fn in [(T("Save processed image (no annotations)…", "حفظ الصورة المحسّنة (بدون وسوم)…"), self.save_processed),
                         (T("Save annotated figure…", "حفظ الصورة بالوسوم…"), self.save_annotated),
+                        (T("Save before / after comparison…", "حفظ مقارنة قبل / بعد…"), self.save_before_after),
                         (T("Save edit log + Methods text…", "حفظ سجل التعديلات ونص الطرق…"), self.save_log),
                         (T("Send report to Results / Word", "إرسال التقرير إلى النتائج / Word"), self.send_report),
                         (T("Figure panel composer (A, B, C…)", "تركيب لوحة صور (A وB وC…)"), self.composer)]:
@@ -420,6 +551,8 @@ class HistologyStudio(QWidget):
         self.name = name
         self.steps_done = []
         self.last_quant = None
+        self.qc_before = self.qc_after = None
+        self.integrity = None
         for it in list(self.view.annotation_items()):
             self.view.scene_.removeItem(it)
         self.view.clear_overlays(); self.view.candidate_items = []
@@ -447,7 +580,13 @@ class HistologyStudio(QWidget):
 
     # ---------------- enhance
     def build_steps(self):
+        """Manual controls → pipeline, in the standard order (denoise first so later contrast changes do not amplify
+        noise; sharpen last)."""
         st = []
+        if self.s_denoise.value() > 0:
+            st.append({"op": "denoise", "params": {"strength": self.s_denoise.value() / 100}})
+        if self.c_flat.isChecked():
+            st.append({"op": "flatfield", "params": {"strength": 1.0}})
         if self.c_wb.isChecked():
             st.append({"op": "white_balance"})
         if self.c_auto.isChecked():
@@ -463,9 +602,103 @@ class HistologyStudio(QWidget):
             st.append({"op": "reinhard"})
         elif self.norm.currentIndex() == 2:
             st.append({"op": "macenko"})
-        if self.s_denoise.value() > 0:
-            st.append({"op": "denoise", "params": {"strength": self.s_denoise.value() / 100}})
+        if self.s_sharpen.value() > 0:
+            st.append({"op": "sharpen", "params": {"amount": self.s_sharpen.value() / 100, "radius": self._sharpen_radius}})
         return st
+
+    def set_controls(self, steps):
+        """Show a pipeline (e.g. the automatic suggestions) in the manual controls, so it can be fine-tuned."""
+        self.reset_controls()
+        for stp in steps:
+            op, p = stp["op"], stp.get("params", {})
+            if op == "flatfield":
+                self.c_flat.setChecked(True)
+            elif op == "white_balance":
+                self.c_wb.setChecked(True)
+            elif op == "auto_levels":
+                self.c_auto.setChecked(True)
+            elif op == "levels":
+                self.s_bright.setValue(int(round(p.get("brightness", 0) * 100))); self.s_contrast.setValue(int(round(p.get("contrast", 1) * 100)))
+            elif op == "gamma":
+                self.s_gamma.setValue(int(round(p.get("gamma", 1) * 100)))
+            elif op == "saturation":
+                self.s_sat.setValue(int(round(p.get("factor", 1) * 100)))
+            elif op == "denoise":
+                self.s_denoise.setValue(int(round(p.get("strength", 0.5) * 100)))
+            elif op == "sharpen":
+                self.s_sharpen.setValue(int(round(p.get("amount", 0.4) * 100))); self._sharpen_radius = float(p.get("radius", 1.0))
+            elif op == "reinhard":
+                self.norm.setCurrentIndex(1)
+            elif op == "macenko":
+                self.norm.setCurrentIndex(2)
+
+    def reset_controls(self):
+        for sl, v in [(self.s_bright, 0), (self.s_contrast, 100), (self.s_gamma, 100), (self.s_sat, 100), (self.s_denoise, 0), (self.s_sharpen, 0)]:
+            sl.setValue(v)
+        self.c_wb.setChecked(False); self.c_auto.setChecked(False); self.c_flat.setChecked(False); self.norm.setCurrentIndex(0)
+        self._sharpen_radius = 1.0
+
+    def _stain_kind(self):
+        return "auto"
+
+    def inspect_image(self):
+        if self.original is None:
+            QMessageBox.information(self, "", T("Open an image first.", "افتح صورة أولًا.")); return
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            qc = IC.image_qc(self.original, self._stain_kind())
+        finally:
+            QApplication.restoreOverrideCursor()
+        self.qc_before = qc
+        dlg = QCDialog(self, qc)
+        if dlg.exec() == QDialog.Accepted:
+            steps = dlg.selected_steps()
+            if dlg.show_areas:
+                self.show_problem_areas(qc)
+            if steps:
+                self.set_controls(steps)
+                self.apply_enhance()
+            else:
+                self.render_report()
+        elif dlg.show_areas:
+            self.show_problem_areas(qc)
+
+    def show_problem_areas(self, qc):
+        self.view.clear_overlays()
+        m = qc.get("problem_mask")
+        if m is not None and m.any():
+            self._add_contours(m, QColor("#FF8C00"), 3)
+            self.c_overlay.setChecked(True)
+
+    def auto_enhance(self):
+        if self.original is None:
+            QMessageBox.information(self, "", T("Open an image first.", "افتح صورة أولًا.")); return
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            qc = IC.image_qc(self.original, self._stain_kind())
+            self.qc_before = qc
+            out, done, rep, steps = IC.auto_enhance(self.original, qc["steps"])
+        except Exception as e:
+            QApplication.restoreOverrideCursor(); QMessageBox.critical(self, "", str(e)); return
+        QApplication.restoreOverrideCursor()
+        if not steps:
+            QMessageBox.information(self, "", T(f"Quality score {qc['score']}/100: no global correction is needed.",
+                                                f"درجة الجودة {qc['score']}/100: الصورة لا تحتاج تصحيحًا كليًا.")
+                                    + self._unfixable_note(qc))
+            self.render_report(); return
+        self.set_controls(steps)
+        self.apply_enhance()
+        note = self._unfixable_note(self.qc_after or qc)
+        if note:
+            QMessageBox.information(self, "", note.strip())
+
+    def _unfixable_note(self, qc):
+        bad = [c for c in qc["checks"] if c["key"] in ("clipping", "artefacts", "focus") and c["status"] in ("warn", "bad")]
+        if not bad:
+            return ""
+        return "\n\n" + T("Not correctable by honest global editing (re-acquire or choose another field):",
+                           "لا يمكن تصحيحه بتعديل كلي أمين (أعد التصوير أو اختر حقلًا آخر):") + "\n" + "\n".join(
+            "• " + (c["name_ar"] if SETTINGS.language == "ar" else c["name_en"]) for c in bad)
 
     def apply_enhance(self):
         if self.original is None:
@@ -474,7 +707,10 @@ class HistologyStudio(QWidget):
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             self.processed, self.steps_done = IC.apply_pipeline(self.original, steps)
-            rep = IC.integrity_report(self.original, self.processed) if steps else None
+            rep = IC.pipeline_integrity(self.original, steps) if steps else None
+            if getattr(self, "qc_before", None) is None:
+                self.qc_before = IC.image_qc(self.original, self._stain_kind())
+            self.qc_after = IC.image_qc(self.processed, self._stain_kind()) if steps else None
         except Exception as e:
             QApplication.restoreOverrideCursor()
             QMessageBox.critical(self, "", str(e)); return
@@ -485,16 +721,17 @@ class HistologyStudio(QWidget):
         self.render_report()
 
     def reset_enhance(self):
-        for s, v in [(self.s_bright, 0), (self.s_contrast, 100), (self.s_gamma, 100), (self.s_sat, 100), (self.s_denoise, 0)]:
-            s.setValue(v)
-        self.c_wb.setChecked(False); self.c_auto.setChecked(False); self.norm.setCurrentIndex(0)
+        self.reset_controls()
         if self.original is not None:
-            self.processed = self.original.copy(); self.steps_done = []; self.integrity = None
+            self.processed = self.original.copy(); self.steps_done = []; self.integrity = None; self.qc_after = None
             self.refresh_view(); self.render_report()
 
     def render_report(self):
         log = IC.EditLog(self.name, self.steps_done)
         html = f"<h3>{self.name}</h3>"
+        qb, qa = getattr(self, "qc_before", None), getattr(self, "qc_after", None)
+        if qb:
+            html += qc_html(qb, qa)
         rep = getattr(self, "integrity", None)
         if rep:
             ok = rep["passed"]
@@ -509,8 +746,10 @@ class HistologyStudio(QWidget):
             html += ("<p style='color:#5B6B82;font-size:11px'>" + T(
                 "Structure is compared after removing global colour/intensity differences (rank-normalised SSIM, edge correlation, "
                 "nuclear-mask Dice). The local-edit score fits the global colour mapping and measures clustered departures from it "
-                "(cloning, painting or erasing cells score > 6).",
-                "تتم المقارنة بعد إزالة فروق اللون والإضاءة الكلية. مؤشر التعديل الموضعي يكشف أي نسخ أو رسم أو مسح لخلايا (قيمة أكبر من 6).") + "</p>")
+                "(cloning, painting or erasing cells score > 6; > 10 when flat-field correction is used). With denoising or sharpening "
+                "each filter is verified separately against its own input.",
+                "تتم المقارنة بعد إزالة فروق اللون والإضاءة الكلية. مؤشر التعديل الموضعي يكشف أي نسخ أو رسم أو مسح لخلايا "
+                "(قيمة أكبر من 6، أو 10 عند تصحيح الإضاءة). عند إزالة الضوضاء أو زيادة الحدة يُفحص كل مرشح على حدة.") + "</p>")
         if self.steps_done:
             html += "<h4>" + T("Edit log", "سجل التعديلات") + "</h4><ol>"
             for s in self.steps_done:
@@ -650,21 +889,42 @@ class HistologyStudio(QWidget):
             self.view.scene_.removeItem(items[0])
 
     # ---------------- export
+    def _ask_export(self, default_name, arr_getter):
+        from .widgets import ExportOptionsDialog
+        dlg = ExportOptionsDialog(self, allow_width=True, raster=True)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        ext, dpi, width_mm = dlg.values()
+        flt = {"tiff": "TIFF (*.tiff *.tif)", "png": "PNG (*.png)", "jpg": "JPEG (*.jpg)", "pdf": "PDF (*.pdf)",
+               "svg": "SVG (*.svg)", "eps": "EPS (*.eps)"}[ext]
+        path, _ = QFileDialog.getSaveFileName(self, "", f"{default_name}.{ext}", flt)
+        if path:
+            if not path.lower().endswith("." + ext) and not (ext == "tiff" and path.lower().endswith(".tif")):
+                path += "." + ext
+            try:
+                IC.save_image(arr_getter(), path, dpi, width_mm)
+            except Exception as e:
+                QMessageBox.critical(self, "", str(e)); return
+            QMessageBox.information(self, "", T("Saved:", "تم الحفظ:") + f"\n{path}\n{dpi} dpi")
+
     def save_processed(self):
         if self.processed is None:
             return
-        path, _ = QFileDialog.getSaveFileName(self, "", os.path.splitext(self.name)[0] + "_processed.tiff", "TIFF (*.tiff);;PNG (*.png)")
-        if path:
-            IC.save_image(self.processed, path, SETTINGS.export_dpi)
+        self._ask_export(os.path.splitext(self.name)[0] + "_processed", lambda: self.processed)
 
     def save_annotated(self):
         if self.processed is None:
             return
         self.show_orig.setChecked(False)
-        path, _ = QFileDialog.getSaveFileName(self, "", os.path.splitext(self.name)[0] + "_annotated.tiff", "TIFF (*.tiff);;PNG (*.png);;JPEG (*.jpg)")
-        if path:
-            arr = self.view.render_image(include_overlays=self.c_overlay.isChecked())
-            IC.save_image(arr, path, SETTINGS.export_dpi)
+        self._ask_export(os.path.splitext(self.name)[0] + "_annotated",
+                         lambda: self.view.render_image(include_overlays=self.c_overlay.isChecked()))
+
+    def save_before_after(self):
+        if self.processed is None:
+            return
+        self._ask_export(os.path.splitext(self.name)[0] + "_before_after",
+                         lambda: IC.compose_panels([self.original, self.processed], ncols=2,
+                                                   labels=[T("A  Original", "A  Original"), "B  Processed"]))
 
     def save_log(self):
         if self.original is None:
@@ -690,6 +950,19 @@ class HistologyStudio(QWidget):
         if self.steps_done:
             res.table(pd.DataFrame([{"Step": i + 1, "Operation": s["name"], "Parameters": json.dumps(s["params"]) if s["params"] else "—"} for i, s in enumerate(self.steps_done)]),
                       "Image processing log (global operations only)")
+        qb, qa = getattr(self, "qc_before", None), getattr(self, "qc_after", None)
+        if qb:
+            rows = []
+            for c in qb["checks"]:
+                if c["status"] == "na":
+                    continue
+                r = {"Check": c["name_en"], "Before": f"{c['value']} ({c['status']})"}
+                if qa:
+                    ca = next((x for x in qa["checks"] if x["key"] == c["key"]), None)
+                    r["After"] = f"{ca['value']} ({ca['status']})" if ca else "—"
+                rows.append(r)
+            rows.append({"Check": "Overall quality score (0–100)", "Before": str(qb["score"]), **({"After": str(qa["score"])} if qa else {})})
+            res.table(pd.DataFrame(rows), "Image quality control (automatic inspection)")
         if rep:
             res.table(pd.DataFrame([{"Metric": k, "Value": v} for k, v in rep.items() if k != "passed"]), "Image integrity check")
         if self.last_quant:

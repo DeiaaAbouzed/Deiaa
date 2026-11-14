@@ -142,74 +142,21 @@ def add_bracket(ax, x1, x2, y, h, text, lw=1.3, fs=None):
 # Group comparison plot (t-test, ANOVA, Mann-Whitney, Kruskal...)
 # ----------------------------------------------------------------------------
 def group_plot(groups: dict, ylabel="", xlabel="", title="", comparisons=None, plot_type=None,
-               paired=False, center="mean"):
-    """groups: {label: array}. comparisons: list of (label_i, label_j, p)."""
-    plot_type = plot_type or SETTINGS.group_plot
-    labels = list(groups)
-    cols = palette(len(labels))
-    with styled():
-        fig, ax = new_figure()
-        xs = np.arange(len(labels))
-        all_max = max(np.nanmax(np.asarray(groups[k], float)) for k in labels)
-        all_min = min(np.nanmin(np.asarray(groups[k], float)) for k in labels)
-        show_points = "no points" not in plot_type
-        for i, k in enumerate(labels):
-            v = np.asarray(groups[k], float)
-            v = v[~np.isnan(v)]
-            c = cols[i]
-            m = np.median(v) if center == "median" else v.mean()
-            e = _err(v)
-            if plot_type.startswith("Bar"):
-                ax.bar(i, m, width=0.6, color=c, alpha=0.35 if show_points else 0.85, edgecolor=c, linewidth=1.6, zorder=1)
-                ax.errorbar(i, m, yerr=[[0], [e]] if not show_points else e, fmt="none", ecolor="black", capsize=6,
-                            elinewidth=1.5, capthick=1.5, zorder=3)
-            elif plot_type.startswith("Box"):
-                bp = ax.boxplot(v, positions=[i], widths=0.5, patch_artist=True, showfliers=not show_points,
-                                medianprops=dict(color="black", lw=2), whiskerprops=dict(lw=1.4), capprops=dict(lw=1.4),
-                                boxprops=dict(lw=1.4))
-                bp["boxes"][0].set_facecolor(mpl.colors.to_rgba(c, 0.35))
-                bp["boxes"][0].set_edgecolor(c)
-            elif plot_type.startswith("Violin") and len(v) > 2:
-                vp = ax.violinplot(v, positions=[i], widths=0.7, showextrema=False)
-                for b in vp["bodies"]:
-                    b.set_facecolor(c); b.set_edgecolor(c); b.set_alpha(0.3)
-                q1, med, q3 = np.percentile(v, [25, 50, 75])
-                ax.plot([i, i], [q1, q3], c="black", lw=4, solid_capstyle="butt", zorder=3)
-                ax.scatter([i], [med], c="white", s=22, zorder=4, edgecolor="black")
-            else:  # scatter + mean ± error
-                ax.hlines(m, i - 0.25, i + 0.25, color="black", lw=2.2, zorder=4)
-                ax.errorbar(i, m, yerr=e, fmt="none", ecolor="black", capsize=7, elinewidth=1.6, capthick=1.6, zorder=4)
-            if show_points:
-                ax.scatter(i + _jitter(len(v), seed=i + 3), v, s=28, color=c, edgecolor="black" if plot_type.startswith("Scatter") else "white",
-                           linewidth=0.6, zorder=3, alpha=0.95)
-        if paired and len(labels) >= 2:
-            arrs = [np.asarray(groups[k], float) for k in labels]
-            for row in zip(*arrs):
-                ax.plot(xs, row, color="#888888", lw=0.7, zorder=2, alpha=0.7)
-        ax.set_xticks(xs)
-        ax.set_xticklabels(labels, rotation=0 if len(labels) < 5 else 35, ha="center" if len(labels) < 5 else "right")
-        ax.set_xlim(-0.6, len(labels) - 0.4)
-        ax.set_ylabel(ylabel)
-        if xlabel:
-            ax.set_xlabel(xlabel)
-        if title:
-            ax.set_title(title)
-        rng = (all_max - all_min) or abs(all_max) or 1.0
-        if plot_type.startswith("Bar") and all_min >= 0:
-            ax.set_ylim(bottom=0)
-        if comparisons and SETTINGS.show_significance:
-            ymax = all_max + 0.08 * rng
-            step = 0.11 * rng
-            shown = 0
-            for (a, b, p) in comparisons:
-                if a not in labels or b not in labels:
-                    continue
-                ia, ib = labels.index(a), labels.index(b)
-                add_bracket(ax, ia, ib, ymax + shown * step, 0.025 * rng, stars(p))
-                shown += 1
-            ax.set_ylim(top=ymax + (shown + 0.6) * step)
-        fig.tight_layout()
-    return fig
+               paired=False, center="mean", test_name="", **opts):
+    """groups: {label: array}. comparisons: list of (label_i, label_j, p) — pass ALL computed pairs (ns included);
+    the editable spec decides what is shown (significant only by default)."""
+    from .groupfig import GroupFigSpec, render
+    spec = GroupFigSpec(groups={str(k): np.asarray(v, float) for k, v in groups.items()}, ylabel=ylabel, xlabel=xlabel,
+                        title=title, comparisons=[(str(a), str(b), float(p)) for a, b, p in (comparisons or [])],
+                        test_name=test_name, paired=paired, center=center, plot_type=plot_type or "", **opts)
+    labels = list(spec.groups)
+    if len(labels) >= 5 and not paired and "sig_mode" not in opts:
+        # many groups: Prism-style symbols — * versus the first (control) group, # versus the most different group
+        means = {l: np.nanmean(v) if len(v) else np.nan for l, v in spec.groups.items()}
+        ref1 = labels[0]
+        ref2 = max(labels[1:], key=lambda l: abs(means[l] - means[ref1]) if not np.isnan(means[l]) else -1)
+        spec.sig_mode, spec.sig_layout, spec.ref1, spec.ref2 = "Versus reference group", "Symbols above groups", ref1, ref2
+    return render(spec)
 
 
 def qq_plot(values_dict: dict, title="Normal Q–Q plot"):

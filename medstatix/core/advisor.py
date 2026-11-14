@@ -195,3 +195,112 @@ WIZARD = {
         (("Plasma concentration-time data", "تركيز البلازما مع الزمن"), ("RESULT", "nca", "Non-compartmental PK analysis.", "التحليل اللاحجيري للحرائك.")),
     ]),
 }
+
+
+# --------------------------------------------------------------- recommendations after import
+def _plan_group_test(y_by_group):
+    """Decide the test for a numeric outcome across independent groups (same rules as auto_analyze)."""
+    groups = [np.asarray(v, float) for v in y_by_group if len(v)]
+    k = len(groups)
+    small = min(len(g) for g in groups)
+    if k == 2:
+        normal = all(_normal(g)[0] for g in groups)
+        return (("Welch t-test", "اختبار t (ويلش)", "normal data in both groups", "البيانات طبيعية في المجموعتين") if normal else
+                ("Mann-Whitney U", "مان-ويتني", "normality not met", "التوزيع غير طبيعي"))
+    resid = np.concatenate([g - g.mean() for g in groups])
+    normal = _normal(resid)[0]
+    lev = stats.levene(*groups, center="median")[1] if small >= 2 else 1.0
+    if normal:
+        ph = "Tukey" if lev >= 0.05 else "Games-Howell"
+        why_en = f"ANOVA residuals normal; variances {'equal' if lev >= 0.05 else 'unequal'} (Levene p = {fmt_p(lev)})"
+        why_ar = f"البواقي طبيعية؛ التباين {'متجانس' if lev >= 0.05 else 'غير متجانس'} (ليفين p = {fmt_p(lev)})"
+        return f"One-way ANOVA + {ph}", f"تحليل التباين الأحادي + {ph}", why_en, why_ar
+    return "Kruskal-Wallis + Dunn", "كروسكال-واليس + دن", "residuals not normal", "البواقي غير طبيعية"
+
+
+def recommend(df: pd.DataFrame, max_items=8):
+    """Ranked list of the most suitable analyses for this dataset.
+
+    Each item: dict(en, ar, why_en, why_ar, action) where action is a tuple understood by the UI:
+    ("smart", [outcomes], factor) | ("run", analysis_id, kwargs) | ("open", analysis_id, preset)."""
+    from .smartimport import guess_roles
+    roles = guess_roles(df)
+    G, M, B = roles["group"], roles["measure"], roles["binary"]
+    out = []
+    names = {c.lower(): c for c in map(str, df.columns)}
+    time_c = next((names[n] for n in names if any(t in n for t in ("time", "days", "months", "survival", "الزمن", "المدة"))), None)
+    event_c = next((names[n] for n in names if any(t in n for t in ("event", "status", "death", "died", "الحدث", "الوفاة"))), None)
+    surv = bool(time_c and event_c and time_c != event_c)
+    if surv:
+        G = [g for g in G if g != event_c]
+        M = [m for m in M if m != time_c]
+        B = [b for b in B if b != event_c]
+        out.append({"en": f"Survival: Kaplan-Meier + log-rank ({time_c}, {event_c})" + (f" by '{G[0]}'" if G else ""),
+                    "ar": f"تحليل البقاء: كابلان-ماير ولوج-رانك ({time_c}، {event_c})" + (f" حسب «{G[0]}»" if G else ""),
+                    "why_en": "time-to-event and event columns detected", "why_ar": "تم التعرف على عمودي الزمن والحدث",
+                    "action": ("open", "km", {"time": time_c, "event": event_c, "group": G[0] if G else None}), "primary": True})
+    dose = next((names[n] for n in names if "dose" in n or "جرعة" in n or "conc" in n), None)
+    n_c = next((names[n] for n in names if n in ("n", "total", "number", "العدد")), None)
+    r_c = next((names[n] for n in names if any(t in n for t in ("dead", "died", "killed", "respon", "mortal", "affected", "نافق", "مستجيب"))), None)
+    if dose and n_c and r_c:
+        out.append({"en": f"Probit analysis: LD50/ED50 with 95% CI ({r_c}/{n_c} vs {dose})", "ar": f"تحليل بروبيت: LD50/ED50 مع 95% CI ({r_c}/{n_c} مقابل {dose})",
+                    "why_en": "dose, number tested and number responding detected", "why_ar": "تم التعرف على الجرعة والعدد والمستجيبين",
+                    "action": ("open", "probit", {"dose": dose, "n": n_c, "responders": r_c}), "primary": True})
+        M = [m for m in M if m not in (dose, n_c, r_c)]
+    if G and M:
+        g = G[0]
+        levels = _level_order(df[g].dropna())
+        plans = []
+        for m in M:
+            y = numeric(df, m)
+            arrs = [y[df[g] == l].dropna().values for l in levels]
+            if sum(len(a) >= 2 for a in arrs) >= 2:
+                plans.append((m, _plan_group_test([a for a in arrs if len(a) >= 2])))
+        if plans:
+            tests = sorted({p[1][0] for p in plans})
+            out.append({"en": f"Compare all {len(plans)} measurement(s) between the {len(levels)} groups of '{g}'",
+                        "ar": f"مقارنة كل القياسات ({len(plans)}) بين مجموعات «{g}» الـ{len(levels)}",
+                        "why_en": "; ".join(f"{m}: {p[0]} ({p[2]})" for m, p in plans[:4]) + (" …" if len(plans) > 4 else ""),
+                        "why_ar": "؛ ".join(f"{m}: {p[1]} ({p[3]})" for m, p in plans[:4]) + (" …" if len(plans) > 4 else ""),
+                        "action": ("smart", [m for m, _ in plans], g), "primary": True})
+        out.append({"en": f"Descriptive table (mean ± SD, median, 95% CI) by '{g}'",
+                    "ar": f"جدول وصفي (المتوسط ± الانحراف، الوسيط، 95% CI) حسب «{g}»",
+                    "why_en": "Table 1 of most papers", "why_ar": "الجدول الأول في أغلب الأبحاث",
+                    "action": ("run", "descriptives", {"variables": M, "group": g})})
+        if len(G) >= 2 and df[G[1]].nunique() <= 6:
+            out.append({"en": f"Two-way ANOVA: {M[0]} by '{G[0]}' × '{G[1]}'",
+                        "ar": f"تحليل التباين الثنائي: {M[0]} حسب «{G[0]}» × «{G[1]}»",
+                        "why_en": "two grouping factors detected (tests the interaction)", "why_ar": "يوجد عاملان للتقسيم (يختبر التفاعل بينهما)",
+                        "action": ("open", "anova2", {"outcome": M[0], "factor_a": G[0], "factor_b": G[1]})})
+    if len(M) >= 2:
+        out.append({"en": f"Correlation matrix of the {len(M)} measurements", "ar": f"مصفوفة الارتباط بين القياسات ({len(M)})",
+                    "why_en": "Pearson or Spearman with p values and heatmap", "why_ar": "بيرسون أو سبيرمان مع قيم p وخريطة حرارية",
+                    "action": ("run", "correlation", {"variables": M[:8]})})
+    import re as _re
+    bin_out = [b for b in B if b not in G[:1] and not _re.search(r"sex|gender|الجنس|النوع", str(b), _re.I)]
+    if bin_out and M:
+        b = bin_out[0]
+        out.append({"en": f"ROC curve: how well each measurement discriminates '{b}'",
+                    "ar": f"منحنى ROC: قدرة كل قياس على التمييز في «{b}»",
+                    "why_en": "binary outcome + numeric markers", "why_ar": "نتيجة ثنائية مع مؤشرات رقمية",
+                    "action": ("open", "roc", {"truth": b, "markers": M[:4]})})
+        out.append({"en": f"Logistic regression for '{b}'", "ar": f"انحدار لوجستي لـ «{b}»",
+                    "why_en": "odds ratios adjusted for several predictors", "why_ar": "نسب أرجحية معدّلة لعدة متغيرات",
+                    "action": ("open", "logreg", {"outcome": b, "predictors": M[:3]})})
+    pre = [c for c in M if any(t in str(c).lower() for t in ("pre", "post", "before", "after", "baseline", "day", "week", "قبل", "بعد", "يوم"))]
+    if len(pre) >= 2 and not G:
+        aid = "ttest_paired" if len(pre) == 2 else "rmanova"
+        out.append({"en": f"Repeated measurements: {', '.join(map(str, pre[:4]))}", "ar": f"قياسات متكررة: {'، '.join(map(str, pre[:4]))}",
+                    "why_en": "same subjects measured more than once", "why_ar": "نفس الحالات قيست أكثر من مرة",
+                    "action": ("open", aid, {"var1": pre[0], "var2": pre[1]} if aid == "ttest_paired" else {"measures": pre})})
+    if dose and M and not (n_c and r_c):
+        resp = next((m for m in M if m != dose), None)
+        if resp:
+            out.append({"en": f"Dose-response curve (EC50/IC50): {resp} vs {dose}", "ar": f"منحنى الجرعة والاستجابة (EC50/IC50): {resp} مقابل {dose}",
+                        "why_en": "dose column detected", "why_ar": "تم التعرف على عمود الجرعة",
+                        "action": ("open", "doseresp", {"dose": dose, "response": resp})})
+    if not out and M:
+        out.append({"en": "Descriptive statistics and normality", "ar": "إحصاء وصفي واختبار التوزيع الطبيعي",
+                    "why_en": "no grouping variable detected", "why_ar": "لم يُعثر على متغير مجموعات",
+                    "action": ("run", "descriptives", {"variables": M})})
+    return out[:max_items]

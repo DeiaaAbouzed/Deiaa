@@ -471,21 +471,26 @@ class ImportAssistant(QDialog):
             b.clicked.connect(lambda: self._pick(choice))
             btns.addWidget(b)
 
-        g, m = roles["group"], roles["measure"]
         if self.wide:
             add(t("Convert: each column is a group  →  then compare groups", "تحويل: كل عمود مجموعة ← ثم مقارنة المجموعات"), ("to_groups",), True)
             add(t("Keep: same subjects measured repeatedly (paired / repeated measures)",
                   "إبقاء: نفس الحالات قيست أكثر من مرة (اختبار مزدوج / قياسات متكررة)"), ("repeated", list(df.columns)))
-        elif g and m:
-            add(t(f"Compare all {len(m)} measurement(s) between the groups of '{g[0]}' (Smart analysis)",
-                  f"مقارنة كل القياسات ({len(m)}) بين مجموعات «{g[0]}» (تحليل ذكي)"), ("smart_all", g[0], m), True)
-            add(t(f"Descriptive table (mean ± SD) by '{g[0]}'", f"جدول وصفي (المتوسط ± الانحراف) حسب «{g[0]}»"), ("describe", g[0], m))
-            if len(m) >= 2:
-                add(t("Correlation between the measurements", "الارتباط بين القياسات"), ("corr", m))
-        elif m:
-            add(t("Descriptive statistics and normality", "إحصاء وصفي واختبار التوزيع الطبيعي"), ("describe", None, m), True)
-            if len(m) >= 2:
-                add(t("Correlation between the measurements", "الارتباط بين القياسات"), ("corr", m))
+        else:
+            from ..core.advisor import recommend
+            try:
+                recs = recommend(df)
+            except Exception:
+                recs = []
+            sub.setText("<b>" + t("Recommended analyses for your data (best first, one click):",
+                                  "التحليلات الموصى بها لبياناتك (الأنسب أولًا، بضغطة واحدة):") + "</b>")
+            for n, r in enumerate(recs):
+                b = QPushButton(f"{n + 1}.  " + (r["ar"] if A else r["en"]))
+                b.setToolTip(r["why_ar"] if A else r["why_en"])
+                if r.get("primary") or n == 0:
+                    b.setObjectName("primary")
+                b.clicked.connect(lambda _=False, a=r["action"]: self._pick(("rec",) + tuple(a)))
+                why = QLabel("     ↳ " + (r["why_ar"] if A else r["why_en"])); why.setObjectName("hint"); why.setWordWrap(True)
+                btns.addWidget(b); btns.addWidget(why)
         add(t("Close and choose the analysis myself", "إغلاق واختيار التحليل بنفسي"), None)
         lay.addLayout(btns)
         self.resize(760, 640)
@@ -493,3 +498,50 @@ class ImportAssistant(QDialog):
     def _pick(self, choice):
         self.choice = choice
         self.accept()
+
+
+# --------------------------------------------------------------------------- export options
+EXPORT_FORMATS = [("TIFF (LZW)", "tiff"), ("PNG", "png"), ("JPEG", "jpg"), ("PDF", "pdf"), ("SVG", "svg"), ("EPS", "eps")]
+EXPORT_DPIS = [150, 300, 600, 1200]
+
+
+class ExportOptionsDialog(QDialog):
+    """Choose format, resolution and (optionally) the print width for figure / image export."""
+
+    def __init__(self, parent=None, allow_width=True, raster=False, multiple=False):
+        super().__init__(parent)
+        A = SETTINGS.language == "ar"
+        t = (lambda en, ar: ar if A else en)
+        self.setWindowTitle(t("Export options", "خيارات الحفظ"))
+        lay = QVBoxLayout(self)
+        f = QFormLayout()
+        self.fmt = QComboBox()
+        for name, ext in EXPORT_FORMATS:
+            self.fmt.addItem(name, ext)
+        self.dpi = QComboBox()
+        for d in EXPORT_DPIS:
+            self.dpi.addItem(f"{d} dpi", d)
+        self.dpi.setCurrentIndex(EXPORT_DPIS.index(600))
+        f.addRow(t("Format", "الصيغة"), self.fmt)
+        f.addRow(t("Resolution", "الدقة"), self.dpi)
+        self.width = QComboBox()
+        self.width.addItem(t("Keep current size", "الحجم الحالي"), 0)
+        for mm, en, ar in [(85, "Single column (85 mm)", "عمود واحد (85 مم)"), (114, "1.5 columns (114 mm)", "عمود ونصف (114 مم)"),
+                           (174, "Full page width (174 mm)", "عرض الصفحة (174 مم)")]:
+            self.width.addItem(t(en, ar), mm)
+        if allow_width:
+            f.addRow(t("Print width", "عرض الطباعة"), self.width)
+        lay.addLayout(f)
+        hint = QLabel(t("TIFF/PNG at 300–600 dpi are accepted by most journals; use 1200 dpi for line art. PDF/SVG/EPS are vector for charts.",
+                        "أغلب المجلات تقبل TIFF أو PNG بدقة 300–600 نقطة/بوصة، و1200 للرسوم الخطية. صيغ PDF وSVG وEPS متجهة للرسوم البيانية.")
+                      + ("" if not raster else t(" For photos, 'Keep current size' keeps the original pixels.",
+                                                  " للصور: «الحجم الحالي» يحافظ على البكسلات الأصلية دون إعادة تشكيل.")))
+        hint.setWordWrap(True); hint.setObjectName("hint"); lay.addWidget(hint)
+        bb = QDialogButtonBox()
+        b = bb.addButton(t("Save…", "حفظ…"), QDialogButtonBox.AcceptRole); b.setObjectName("primary")
+        bb.addButton(tr("cancel"), QDialogButtonBox.RejectRole)
+        bb.accepted.connect(self.accept); bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+
+    def values(self):
+        return self.fmt.currentData(), self.dpi.currentData(), (self.width.currentData() or None)
