@@ -1100,7 +1100,7 @@ class MainWindow(QMainWindow):
             h = getattr(self, "histo", None)
             if h is None or getattr(h, "original", None) is None:
                 return None
-            return h.view.render_image(True)
+            return h.render_annotated(True)
         PanelBuilder(self, self._all_figures(), histo).exec()
 
     def animal_toolkit(self):

@@ -44,10 +44,10 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: medstatix-v1.3.0
-          name: MedStatix Pro 1.3.0 (Windows)
+          tag_name: medstatix-v1.3.1
+          name: MedStatix Pro 1.3.1 (Windows)
           target_commitish: ${{ github.sha }}
-          body: "MedStatix Pro 1.3.0 – one-click publication-ready histology/IHC images (presets per stain and for camera or phone photos, automatic eyepiece crop, background whitening, flat-field, verified by the integrity check) with a before/after slider; batch processing of a whole folder straight to statistics; project files (.msx) with re-run on new data; target-journal presets (Elsevier, Springer, Nature, Wiley, PLOS, Cell Press, MDPI); manuscript builder (Statistical analysis + Results + APA tables + legends, Word); statistical report for reviewers (effect sizes with CI, sensitivity, robustness); multi-panel figures mixing charts and histology images; animal-study toolkit (randomisation, sample size, Grubbs/ROUT outliers, ARRIVE 2.0); pharmacology/toxicology study templates; English/Arabic interpretation export. Windows installer (MedStatixPro-Setup-1.3.0.exe) and portable ZIP."
+          body: "MedStatix Pro 1.3.1 – labels and arrows can be saved on the original (unenhanced) image or on the enhanced image (Export → Labels on). one-click publication-ready histology/IHC images (presets per stain and for camera or phone photos, automatic eyepiece crop, background whitening, flat-field, verified by the integrity check) with a before/after slider; batch processing of a whole folder straight to statistics; project files (.msx) with re-run on new data; target-journal presets (Elsevier, Springer, Nature, Wiley, PLOS, Cell Press, MDPI); manuscript builder (Statistical analysis + Results + APA tables + legends, Word); statistical report for reviewers (effect sizes with CI, sensitivity, robustness); multi-panel figures mixing charts and histology images; animal-study toolkit (randomisation, sample size, Grubbs/ROUT outliers, ARRIVE 2.0); pharmacology/toxicology study templates; English/Arabic interpretation export. Windows installer (MedStatixPro-Setup-1.3.1.exe) and portable ZIP."
           files: |
             dist/installer/*.exe
             dist/MedStatixPro-portable-win64.zip

@@ -472,7 +472,7 @@ class HistologyStudio(QWidget):
         self.px.setToolTip(T("Calibration from your microscope/camera (e.g. 0.25 µm/px at 40×). 0 = uncalibrated.",
                              "معايرة من المجهر/الكاميرا (مثلًا 0.25 ميكرومتر/بكسل عند 40×). صفر = بدون معايرة."))
         f.addRow(T("Pixel size", "حجم البكسل"), self.px)
-        self.show_orig = QCheckBox(T("Show original", "عرض الأصل")); self.show_orig.toggled.connect(self.refresh_view); f.addRow(self.show_orig)
+        self.show_orig = QCheckBox(T("Show original", "عرض الأصل")); self.show_orig.toggled.connect(self.refresh_view); self.show_orig.toggled.connect(self._sync_annot_on); f.addRow(self.show_orig)
         il.addWidget(g)
         # one-click publication-ready
         g = QGroupBox(T("2 · Publication-ready in one click", "٢ · تجهيز للنشر بضغطة واحدة")); f = QFormLayout(g)
@@ -552,6 +552,13 @@ class HistologyStudio(QWidget):
         il.addWidget(g)
         # export
         g = QGroupBox(T("5 · Export", "٥ · التصدير")); f = QFormLayout(g)
+        self.annot_on = QComboBox()
+        self.annot_on.addItem(T("Enhanced image", "الصورة المحسّنة"), "processed")
+        self.annot_on.addItem(T("Original image (no enhancement)", "الصورة الأصلية (بدون تحسين)"), "original")
+        self.annot_on.setToolTip(T("Which image the labels and arrows are drawn on when saving, in the report and in the panel composer",
+                                   "الصورة التي تُرسم عليها الأسهم والتسميات عند الحفظ وفي التقرير ولوحة الصور"))
+        self.annot_on.currentIndexChanged.connect(lambda i: self.show_orig.setChecked(self.annot_on.currentData() == "original"))
+        f.addRow(T("Labels on", "الوسوم على"), self.annot_on)
         for txt, fn in [(T("Save processed image (no annotations)…", "حفظ الصورة المحسّنة (بدون وسوم)…"), self.save_processed),
                         (T("Save annotated figure…", "حفظ الصورة بالوسوم…"), self.save_annotated),
                         (T("Save before / after comparison…", "حفظ مقارنة قبل / بعد…"), self.save_before_after),
@@ -632,6 +639,12 @@ class HistologyStudio(QWidget):
         if not crops or self.original is None:
             return self.original
         return IC.apply_pipeline(self.original, [{"op": "crop", "params": crops[0]["params"]}])[0]
+
+    def _sync_annot_on(self, on):
+        if hasattr(self, "annot_on"):
+            i = self.annot_on.findData("original" if on else "processed")
+            if i != self.annot_on.currentIndex():
+                self.annot_on.blockSignals(True); self.annot_on.setCurrentIndex(i); self.annot_on.blockSignals(False)
 
     def refresh_view(self):
         if self.original is None:
@@ -1056,12 +1069,23 @@ class HistologyStudio(QWidget):
             return
         self._ask_export(os.path.splitext(self.name)[0] + "_processed", lambda: self.processed)
 
+    def render_annotated(self, include_overlays=True, which=None):
+        """Labels/arrows drawn on the chosen image (original or enhanced, never the before/after split view)."""
+        if self.original is None:
+            return None
+        which = which or self.annot_on.currentData()
+        self.view.set_image(self.base if which == "original" else self.processed, keep_view=True)
+        try:
+            return self.view.render_image(include_overlays=include_overlays)
+        finally:
+            self.refresh_view()
+
     def save_annotated(self):
         if self.processed is None:
             return
-        self.show_orig.setChecked(False)
-        self._ask_export(os.path.splitext(self.name)[0] + "_annotated",
-                         lambda: self.view.render_image(include_overlays=self.c_overlay.isChecked()))
+        suffix = "_annotated_original" if self.annot_on.currentData() == "original" else "_annotated"
+        self._ask_export(os.path.splitext(self.name)[0] + suffix,
+                         lambda: self.render_annotated(self.c_overlay.isChecked()))
 
     def save_before_after(self):
         if self.processed is None:
@@ -1115,7 +1139,7 @@ class HistologyStudio(QWidget):
             fig = Figure(figsize=(9, 4.5))
             ax1, ax2 = fig.subplots(1, 2)
             ax1.imshow(self.base); ax1.set_title("Original"); ax1.axis("off")
-            ax2.imshow(self.view.render_image(True) if self.view.annotation_items() or self.view.overlay_items else self.processed)
+            ax2.imshow(self.render_annotated(True, "processed") if self.view.annotation_items() or self.view.overlay_items else self.processed)
             ax2.set_title("Processed / annotated"); ax2.axis("off")
             fig.tight_layout()
         res.figure(fig, "Original and processed image (global adjustments only).")
@@ -1132,4 +1156,4 @@ class HistologyStudio(QWidget):
                 self.send_rows.emit(rows)
 
     def composer(self):
-        PanelComposer(self, lambda: self.view.render_image(self.c_overlay.isChecked()) if self.original is not None else None).exec()
+        PanelComposer(self, lambda: self.render_annotated(self.c_overlay.isChecked())).exec()
