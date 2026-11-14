@@ -8,7 +8,7 @@ import pandas as pd
 
 from .result import AnalysisError
 
-IMPORT_FILTER = ("All supported (*.xlsx *.xls *.csv *.txt *.tsv *.sav *.dta *.sas7bdat);;"
+IMPORT_FILTER = ("All supported (*.xlsx *.xls *.csv *.txt *.tsv *.sav *.dta *.sas7bdat *.msx);;MedStatix project (*.msx);;"
                  "Excel (*.xlsx *.xls);;CSV (*.csv *.txt *.tsv);;SPSS (*.sav);;Stata (*.dta);;SAS (*.sas7bdat)")
 
 

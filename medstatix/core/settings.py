@@ -18,6 +18,8 @@ class Settings:
     show_significance: bool = True
     alpha: float = 0.05
     decimals: int = 3
+    journal: str = ""               # target journal preset ("" = none), see report/journals.py
+    interp_lang: str = "same"       # Word export interpretation language: same | en | ar | both
 
     def as_dict(self):
         return asdict(self)

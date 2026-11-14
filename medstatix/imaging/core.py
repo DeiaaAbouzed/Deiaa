@@ -94,6 +94,10 @@ OPS = {
     "denoise": ("Mild denoising (edge-preserving)", "إزالة ضوضاء خفيفة (تحافظ على الحواف)"),
     "flatfield": ("Uneven illumination correction (flat-field / shading)", "تصحيح الإضاءة غير المتساوية (Flat-field)"),
     "sharpen": ("Mild sharpening (unsharp mask, whole image)", "زيادة حدة خفيفة (Unsharp mask للصورة كاملة)"),
+    "crop": ("Crop to the eyepiece field", "قص حدود دائرة العدسة"),
+    "background_white": ("Background whitening (neutral white slide background)", "تبييض الخلفية (خلفية الشريحة بيضاء محايدة)"),
+    "black_point": ("Haze removal (black point)", "إزالة الضبابية (نقطة الأسود)"),
+    "clahe": ("Mild local contrast (CLAHE on lightness only)", "تباين موضعي خفيف (CLAHE على الإضاءة فقط)"),
 }
 
 # Reference H&E appearance (target stain vectors and LAB statistics) — a well-stained
@@ -216,14 +220,15 @@ def op_denoise(f, strength=0.5):
     return np.clip(out, 0, 1), {"estimated_noise_sigma": round(sigma, 5), "h": round(h, 5), "method": "non-local means"}
 
 
-def shading_surface(f, tiles=12):
+def shading_surface(f, tiles=12, channel=None):
     """Estimate the illumination (shading) field as a smooth 2nd-order polynomial surface fitted, robustly,
     to the brightness of *background* pixels (bright, unstained: low saturation) in a grid of tiles.
 
     A quadratic surface has only six coefficients, so it can model vignetting / an uneven lamp but cannot
     carry any tissue structure. Returns (surface H×W, unevenness 0–1, number of background tiles used)."""
     lum = f.mean(2)
-    sat = (f.max(2) - f.min(2)) / np.maximum(f.max(2), 1e-3)
+    val = lum if channel is None else f[..., channel]
+    um = _unstained_mask(f)
     H, W = lum.shape
     ty, tx = max(H // tiles, 8), max(W // tiles, 8)
     ny, nx = max(H // ty, 1), max(W // tx, 1)
@@ -231,18 +236,16 @@ def shading_surface(f, tiles=12):
     yy, xx, vv = [], [], []
     for i in range(ny):
         for j in range(nx):
-            L = lum[i * ty:(i + 1) * ty, j * tx:(j + 1) * tx]
-            S = sat[i * ty:(i + 1) * ty, j * tx:(j + 1) * tx]
-            m = (S < 0.14) & (L > bright_thr)
+            m = um[i * ty:(i + 1) * ty, j * tx:(j + 1) * tx]
             if m.mean() >= 0.03:
-                vv.append(np.percentile(L[m], 80))
+                vv.append(np.percentile(val[i * ty:(i + 1) * ty, j * tx:(j + 1) * tx][m], 80))
                 yy.append((i + 0.5) / ny - 0.5); xx.append((j + 0.5) / nx - 0.5)
     n_bg = len(vv)
     if n_bg < 8:  # little background: fall back to the bright percentile of every tile (less specific)
         yy, xx, vv = [], [], []
         for i in range(ny):
             for j in range(nx):
-                vv.append(np.percentile(lum[i * ty:(i + 1) * ty, j * tx:(j + 1) * tx], 97))
+                vv.append(np.percentile(val[i * ty:(i + 1) * ty, j * tx:(j + 1) * tx], 97))
                 yy.append((i + 0.5) / ny - 0.5); xx.append((j + 0.5) / nx - 0.5)
     yy, xx, vv = map(np.asarray, (yy, xx, vv))
     A = np.stack([np.ones_like(xx), xx, yy, xx * xx, yy * yy, xx * yy], 1)
@@ -260,16 +263,88 @@ def shading_surface(f, tiles=12):
     return np.clip(surf, 0.05, None), unev, n_bg
 
 
-def op_flatfield(f, strength=1.0):
-    """Shading correction: divide by a smooth 2nd-order polynomial illumination surface fitted to the background,
-    identical in all channels. Corrects vignetting / uneven lamp illumination, a standard accepted correction."""
+def _unstained_mask(f):
+    """Pixels that look like empty slide: bright, and with the same chromaticity as the slide background (so the test
+    still works under a colour cast); falls back to low absolute saturation."""
+    lum = f.mean(2)
+    bg, _ = background_colour(f)
+    bright = lum > np.percentile(lum, 60)
+    if bg is None:
+        sat = (f.max(2) - f.min(2)) / np.maximum(f.max(2), 1e-3)
+        return bright & (sat < 0.14)
+    chrom = f / np.maximum(lum[..., None], 1e-3)
+    bgc = bg / max(float(np.mean(bg)), 1e-3)
+    return bright & (np.abs(chrom - bgc).max(2) < 0.07)
+
+
+def _bg_tiles(f, tiles=12):
+    """Background tiles: (yy, xx, rgb) of bright, unstained pixels per tile (normalised tile centres)."""
+    lum = f.mean(2)
+    um = _unstained_mask(f)
+    H, W = lum.shape
+    ty, tx = max(H // tiles, 8), max(W // tiles, 8)
+    ny, nx = max(H // ty, 1), max(W // tx, 1)
+    yy, xx, cc = [], [], []
+    for i in range(ny):
+        for j in range(nx):
+            sl = (slice(i * ty, (i + 1) * ty), slice(j * tx, (j + 1) * tx))
+            m = um[sl]
+            if m.mean() >= 0.15:
+                cc.append(np.median(f[sl][m], axis=0))
+                yy.append((i + 0.5) / ny - 0.5); xx.append((j + 0.5) / nx - 0.5)
+    return np.asarray(yy), np.asarray(xx), np.asarray(cc).reshape(-1, 3)
+
+
+def chroma_planes(f):
+    """Colour drift of the background across the field, modelled for each channel as a *plane* (3 coefficients) of
+    the channel/lightness ratio, fitted robustly to background tiles. Returns (ratio fields H×W×3 or None, drift)."""
+    yy, xx, cc = _bg_tiles(f)
+    if len(cc) < 10 or (np.ptp(yy) < 0.4 and np.ptp(xx) < 0.4):
+        return None, 0.0
+    ratio = cc / np.maximum(cc.mean(1, keepdims=True), 1e-3)
+    quad = len(cc) >= 30
+    A = np.stack([np.ones_like(xx), xx, yy] + ([xx * xx, yy * yy, xx * yy] if quad else []), 1)
+    H, W = f.shape[:2]
+    Y, X = np.mgrid[0:H, 0:W]
+    Yn, Xn = (Y + 0.5) / H - 0.5, (X + 0.5) / W - 0.5
+    fields, drift = [], 0.0
+    for c in range(3):
+        v = ratio[:, c]; w = np.ones_like(v)
+        for _ in range(4):
+            coef = np.linalg.lstsq(A * w[:, None], v * w, rcond=None)[0]
+            r = v - A @ coef
+            sc = np.median(np.abs(r)) * 1.4826 + 1e-3
+            w = 1 / np.maximum(1, np.abs(r) / (2 * sc))
+        fit = coef[0] + coef[1] * Xn + coef[2] * Yn
+        if quad:
+            fit = fit + coef[3] * Xn ** 2 + coef[4] * Yn ** 2 + coef[5] * Xn * Yn
+        fields.append(fit / coef[0])
+        drift = max(drift, float(np.abs(fit / coef[0] - 1).max()))
+    return np.stack(fields, -1), drift
+
+
+def shading_chroma(f):
+    return chroma_planes(f)[1]
+
+
+def op_flatfield(f, strength=1.0, colour=True):
+    """Shading correction: divide by a smooth 2nd-order polynomial illumination surface fitted to the background
+    (same for all channels). With colour=True, a gentle colour-drift correction is added: each channel/lightness ratio
+    of the background is modelled as a plane and divided out (limited to ±8 %), which removes e.g. bluish edges / a warm
+    centre in the way a blank-field reference would. Corrects vignetting / uneven lamp illumination."""
+    k = float(np.clip(strength, 0, 1))
     field, unev, n_bg = shading_surface(f)
-    target = np.percentile(field, 98)
-    gain = np.clip(target / np.maximum(field, 1e-3), 0.7, 1.6)
-    gain = 1 + (gain - 1) * float(np.clip(strength, 0, 1))
-    return np.clip(f * gain[..., None], 0, 1), {"gain_min": round(float(gain.min()), 3), "gain_max": round(float(gain.max()), 3),
-                                                 "unevenness_before": round(unev, 3), "background_tiles": n_bg,
-                                                 "method": "robust 2nd-order polynomial surface fitted to background pixels"}
+    gain = np.clip(np.percentile(field, 98) / np.maximum(field, 1e-3), 0.7, 1.6)
+    gain = 1 + (gain - 1) * k
+    out = f * gain[..., None]
+    drift = 0.0
+    if colour:
+        planes, drift = chroma_planes(f)
+        if planes is not None:
+            out = out / np.clip(1 + (planes - 1) * k, 0.92, 1.08)
+    return np.clip(out, 0, 1), {"gain_min": round(float(gain.min()), 3), "gain_max": round(float(gain.max()), 3),
+                                "colour_drift_corrected": round(drift, 3), "background_tiles": n_bg,
+                                "method": "robust 2nd-order polynomial surface fitted to background pixels"}
 
 
 def op_sharpen(f, amount=0.4, radius=1.0):
@@ -279,7 +354,118 @@ def op_sharpen(f, amount=0.4, radius=1.0):
     return np.clip(f + amount * (f - blur), 0, 1), {"amount": amount, "radius_px": radius}
 
 
-FUNCS = {"flatfield": op_flatfield, "sharpen": op_sharpen, "white_balance": op_white_balance, "levels": op_levels, "auto_levels": op_auto_levels, "gamma": op_gamma,
+def find_eyepiece_field(img, min_frac=0.25):
+    """Detect the circular eyepiece field in a phone photo taken through the microscope eyepiece (bright disc on a
+    dark surround). Returns (cy, cx, r) in pixels or None when the image has no dark surround."""
+    a = np.asarray(img)
+    s = max(1, max(a.shape[:2]) // 600)
+    lum = a[::s, ::s].mean(2) / 255.0
+    H, W = lum.shape
+    border = np.concatenate([lum[:H // 20].ravel(), lum[-H // 20:].ravel(), lum[:, :W // 20].ravel(), lum[:, -W // 20:].ravel()])
+    if np.percentile(border, 60) > 0.25:  # corners not dark → no eyepiece circle
+        return None
+    thr = filters.threshold_otsu(lum)
+    m = ndi.binary_opening(lum > max(thr, 0.15), structure=morphology.disk(3))
+    lab = measure.label(m)
+    if lab.max() == 0:
+        return None
+    r = max(measure.regionprops(lab), key=lambda r: r.area)
+    if r.area < min_frac * H * W * 0.5:
+        return None
+    cy, cx = r.centroid
+    y0, x0, y1, x1 = r.bbox
+    rad = min(math.sqrt(r.area / math.pi), (y1 - y0) / 2, (x1 - x0) / 2)
+    return cy * s, cx * s, rad * s
+
+
+def op_crop(f, box=None):
+    """Rectangular crop (box = y0, y1, x0, x1). Cropping removes only the dark area outside the eyepiece field."""
+    if not box:
+        return f, {}
+    y0, y1, x0, x1 = [int(v) for v in box]
+    return f[y0:y1, x0:x1], {"box_y0_y1_x0_x1": [y0, y1, x0, x1]}
+
+
+def eyepiece_crop_box(img, margin=0.86):
+    """Largest axis-aligned rectangle inside the eyepiece circle (keeps the image aspect ratio close to 4:3)."""
+    c = find_eyepiece_field(img)
+    if c is None:
+        return None
+    cy, cx, r = c
+    r *= margin
+    ang = math.atan(3 / 4) if img.shape[1] >= img.shape[0] else math.atan(4 / 3)
+    hw, hh = r * math.cos(ang), r * math.sin(ang)
+    H, W = img.shape[:2]
+    y0, y1 = int(max(0, cy - hh)), int(min(H, cy + hh)); x0, x1 = int(max(0, cx - hw)), int(min(W, cx + hw))
+    if (y1 - y0) < 0.2 * H or (x1 - x0) < 0.2 * W:
+        return None
+    return [y0, y1, x0, x1]
+
+
+def background_colour(f):
+    """Robust colour of the empty slide background: the brightest, smoothest pixels (works even with a colour cast).
+    Returns (rgb, fraction_of_image) or (None, 0)."""
+    st = int(max(1, math.ceil(max(f.shape[:2]) / 700)))
+    f = f[::st, ::st]
+    lum = f.mean(2)
+    tex = ndi.uniform_filter(lum * lum, 5) - ndi.uniform_filter(lum, 5) ** 2
+    cand = lum >= np.percentile(lum, 92)
+    smooth = tex <= np.percentile(tex[cand], 50) if cand.any() else cand
+    m = cand & smooth
+    if m.sum() < 200 or float(np.median(lum[m])) < 0.45:
+        return None, 0.0
+    bgc = np.median(f[m], axis=0)
+    frac = float((lum > np.median(lum[m]) - 0.06).mean())
+    # real slide background forms sizeable empty areas; scattered bright gaps inside dense tissue do not count
+    big = ndi.binary_opening(lum > np.median(lum[m]) - 0.06, structure=np.ones((9, 9), bool))
+    if frac < 0.06 or big.mean() < 0.03:
+        return None, 0.0
+    if bgc.max() / max(bgc.min(), 1e-3) > 1.4:  # strongly coloured → stained tissue, not a cast slide background
+        return None, 0.0
+    return bgc, frac
+
+
+def op_background_white(f, target=0.95, strength=1.0):
+    """Background whitening: one linear gain per colour channel so that the empty slide background becomes neutral
+    white (corrects colour cast and dim exposure together). Identical for every pixel."""
+    bg, frac = background_colour(f)
+    if bg is None:
+        return f, {"skipped": "no clear background"}
+    gains = np.clip(target / np.maximum(bg, 1e-3), 0.7, 1.6)
+    gains = 1 + (gains - 1) * float(np.clip(strength, 0, 1))
+    return np.clip(f * gains, 0, 1), {"background_RGB": [round(float(v) * 255) for v in bg],
+                                      "channel_gains_RGB": [round(float(g), 4) for g in gains]}
+
+
+def op_black_point(f, pct=0.3, target=0.04, max_slope=3.0):
+    """Lift haze: linear stretch that takes the darkest tissue to near black while the slide background keeps its
+    level (same straight line for all channels and pixels)."""
+    lum = f.mean(2)
+    lo = float(np.percentile(lum, pct))
+    if lo <= target + 0.02:
+        return f, {"black_point": round(lo, 4), "skipped": "already dark enough"}
+    bg, _ = background_colour(f)
+    anchor = float(np.clip(np.mean(bg), 0.6, 1.0)) if bg is not None else 1.0
+    if anchor - lo < 0.05:
+        anchor = 1.0
+    a = min((anchor - target) / (anchor - lo), float(max_slope))
+    return np.clip(anchor - (anchor - f) * a, 0, 1), {"black_point_in": round(lo, 4), "black_point_out": target,
+                                                       "white_anchor": round(anchor, 4), "slope": round(a, 3)}
+
+
+def op_clahe(f, strength=0.3, clip=0.008):
+    """Mild local-contrast enhancement: CLAHE (Zuiderveld 1994) on CIE L* only (hue/stain colour unchanged),
+    large tiles (1/6 of the image), low clip limit, blended with the input at the given strength (≤ 0.5)."""
+    strength = float(np.clip(strength, 0, 0.5))
+    lab = color.rgb2lab(f)
+    L = lab[..., 0] / 100.0
+    ks = (max(f.shape[0] // 6, 16), max(f.shape[1] // 6, 16))
+    Lc = exposure.equalize_adapthist(np.clip(L, 0, 1), kernel_size=ks, clip_limit=clip)
+    lab[..., 0] = (L * (1 - strength) + Lc * strength) * 100
+    return np.clip(color.lab2rgb(lab), 0, 1), {"strength": strength, "clip_limit": clip, "kernel": list(ks), "channel": "L* only"}
+
+
+FUNCS = {"crop": op_crop, "background_white": op_background_white, "black_point": op_black_point, "clahe": op_clahe, "flatfield": op_flatfield, "sharpen": op_sharpen, "white_balance": op_white_balance, "levels": op_levels, "auto_levels": op_auto_levels, "gamma": op_gamma,
          "saturation": op_saturation, "reinhard": op_reinhard, "macenko": op_macenko, "denoise": op_denoise}
 
 # Hard limits keep every operation within what image-integrity guidelines accept
@@ -306,6 +492,15 @@ class EditLog:
                     ") was applied identically to all images in a comparison.")
         if any(s["op"] == "flatfield" for s in self.steps):
             txt += " Uneven illumination (vignetting) was corrected by flat-field (shading) correction, dividing the image by a smooth second-order polynomial illumination surface fitted to background pixels."
+        if any(s["op"] == "crop" for s in self.steps):
+            txt += " Photographs taken through the eyepiece were cropped to the illuminated field of view."
+        if any(s["op"] == "background_white" for s in self.steps):
+            txt += " Colour balance was set with one linear gain per colour channel so that the empty slide background is neutral white."
+        if any(s["op"] == "black_point" for s in self.steps):
+            txt += " A linear black-point (levels) adjustment was applied to remove haze."
+        if any(s["op"] == "clahe" for s in self.steps):
+            txt += (" Mild contrast-limited adaptive histogram equalization (CLAHE; Zuiderveld 1994) was applied to the lightness "
+                    "channel of the whole image (blended at ≤ 50 %), leaving stain hue unchanged.")
         if any(s["op"] == "sharpen" for s in self.steps):
             txt += " Mild unsharp masking was applied uniformly to the whole image."
         if any(s["op"] == "denoise" for s in self.steps):
@@ -350,12 +545,24 @@ def _rank_gray(img):
     return (r / (g.size - 1)).reshape(img.shape[:2])
 
 
+def _big_blur(x, sigma):
+    """Gaussian blur with a large sigma, computed on a downsampled copy (same result to within interpolation error,
+    ~50× faster)."""
+    if sigma <= 8:
+        return filters.gaussian(x, sigma)
+    from skimage.transform import resize
+    fct = sigma / 4.0
+    small = resize(x, (max(int(x.shape[0] / fct), 4), max(int(x.shape[1] / fct), 4)), order=1, anti_aliasing=True)
+    small = ndi.gaussian_filter(small, 4.0, mode="nearest")
+    return resize(small, x.shape, order=1)
+
+
 def _rank_gray_flat(img):
     """Rank-normalised grey after dividing by a very smooth local mean, so a smooth multiplicative shading
     field (vignetting) and its flat-field correction give the same image."""
     g = color.rgb2gray(img).astype(np.float64)
     big = max(img.shape[:2]) / 16
-    g = g / (filters.gaussian(g, big) + 1e-3)
+    g = g / (_big_blur(g, big) + 1e-3)
     r = np.empty(g.size); r[np.argsort(g.ravel(), kind="stable")] = np.arange(g.size)
     return (r / (g.size - 1)).reshape(img.shape[:2])
 
@@ -383,8 +590,8 @@ def local_edit_map(original: np.ndarray, processed: np.ndarray, bins: int = 32, 
         p_img = p.reshape(H, W, 3)
         for _ in range(2):
             pr = pred[idx].reshape(H, W, 3)
-            num = filters.gaussian(p_img.mean(2) * pr.mean(2), big)
-            den = filters.gaussian(pr.mean(2) ** 2, big) + 1e-6
+            num = _big_blur(p_img.mean(2) * pr.mean(2), big)
+            den = _big_blur(pr.mean(2) ** 2, big) + 1e-6
             gain = num / den
             p_img = np.clip(p_img / gain[..., None], 0, 1.5)
             pf = p_img.reshape(-1, 3)
@@ -436,21 +643,26 @@ def integrity_report(original: np.ndarray, processed: np.ndarray, nuclear_fracti
 
 
 
-NEIGHBOURHOOD_OPS = ("denoise", "sharpen")
+NEIGHBOURHOOD_OPS = ("denoise", "sharpen", "clahe")
 
 
 def pipeline_integrity(original: np.ndarray, steps: list[dict]) -> dict:
     """Integrity of a whole pipeline, verified stage by stage.
 
-    Neighbourhood filters (denoise, sharpen) are each checked against their own input; the runs of pointwise /
-    smooth-field operations between them are checked as one stage (flat-field mode when it contains flatfield).
-    This way a strong-but-legitimate denoise of a very noisy image is not confused with a structural change,
-    while a local edit anywhere is still caught. The report shows the worst value of every metric."""
+    A crop is applied to the original first (cropping only removes the area outside the field). Neighbourhood filters
+    (denoise, sharpen, CLAHE) are each checked against their own input; the runs of pointwise / smooth-field operations
+    between them are checked as one stage (flat-field mode when it contains flatfield; CLAHE, whose tone curve varies
+    smoothly across the image, is also checked in that mode). A strong-but-legitimate denoise of a very noisy image is
+    therefore not confused with a structural change, while a local edit anywhere is still caught.
+    The report shows the worst value of every metric."""
+    steps = list(steps)
+    while steps and steps[0]["op"] == "crop":
+        original = apply_pipeline(original, [steps.pop(0)])[0]
     if not steps:
         return integrity_report(original, original)
     stages, cur = [], []
     for st in steps:
-        if st["op"] in NEIGHBOURHOOD_OPS:
+        if st["op"] in NEIGHBOURHOOD_OPS or st["op"] == "flatfield":
             if cur:
                 stages.append(cur); cur = []
             stages.append([st])
@@ -461,15 +673,15 @@ def pipeline_integrity(original: np.ndarray, steps: list[dict]) -> dict:
     prev, reps = original, []
     for stg in stages:
         nxt = apply_pipeline(prev, stg)[0]
-        reps.append(integrity_report(prev, nxt, smooth_field=any(s["op"] == "flatfield" for s in stg),
+        reps.append(integrity_report(prev, nxt, smooth_field=any(s["op"] in ("flatfield", "clahe") for s in stg),
                                      structure_scale=1.5 if stg[0]["op"] == "denoise" else 0.0))
         prev = nxt
-    lk = lambda r: next(k for k in r if k.startswith("Local-edit"))
-    thr = lambda r: float(lk(r).split("threshold ")[1].rstrip(")"))
-    worst_local = max(reps, key=lambda r: r[lk(r)] / thr(r))
     passed = all(r["passed"] for r in reps)
     if len(reps) == 1:
         return reps[0]
+    lk = lambda r: next(k for k in r if k.startswith("Local-edit"))
+    thr = lambda r: float(lk(r).split("threshold ")[1].rstrip(")"))
+    worst_local = max(reps, key=lambda r: r[lk(r)] / thr(r))
     return {"SSIM (structure)": min(r["SSIM (structure)"] for r in reps),
             lk(worst_local): worst_local[lk(worst_local)],
             "Edge correlation": min(r["Edge correlation"] for r in reps),
@@ -477,6 +689,7 @@ def pipeline_integrity(original: np.ndarray, steps: list[dict]) -> dict:
             "Dark objects original": reps[0]["Dark objects original"], "Dark objects processed": reps[-1]["Dark objects processed"],
             "Stages checked": len(reps),
             "Verdict": "Structure preserved" if passed else "Check: structural change detected", "passed": passed}
+
 
 # ----------------------------------------------------------------------------- image quality control
 QC_ORDER = ["denoise", "flatfield", "white_balance", "levels", "auto_levels", "gamma", "saturation", "sharpen", "reinhard"]
@@ -697,13 +910,13 @@ def auto_enhance(img: np.ndarray, steps: list[dict] | None = None, stain: str = 
         # first soften the neighbourhood filters, then drop them, then drop steps from the end
         soft = False
         for s_ in steps:
-            k = "amount" if s_["op"] == "sharpen" else "strength" if s_["op"] == "denoise" else None
+            k = "amount" if s_["op"] == "sharpen" else "strength" if s_["op"] in ("denoise", "clahe") else None
             if k and s_["params"].get(k, 0) > 0.2:
                 s_["params"] = {**s_["params"], k: round(s_["params"][k] / 2, 2)}
                 soft = True
         if soft:
             continue
-        for drop in ("sharpen", "denoise"):
+        for drop in ("sharpen", "clahe", "denoise"):
             if any(s["op"] == drop for s in steps):
                 steps = [s for s in steps if s["op"] != drop]
                 break
@@ -894,3 +1107,116 @@ def compose_panels(images: list[np.ndarray], ncols=2, labels=None, gap_px=12, la
             draw.rectangle([bb[0] - 4, bb[1] - 3, bb[2] + 4, bb[3] + 3], fill=(255, 255, 255))
         draw.text((tx, ty), lab, fill=label_color, font=font)
     return np.asarray(canvas)
+
+
+# ----------------------------------------------------------------------------- one-click publication-ready
+STAIN_PRESETS = {
+    # mid-tone target (tissue median lightness), tissue saturation target, sharpen amount, CLAHE strength
+    "H&E": {"mid": 0.66, "sat": 0.30, "sharp": 0.45, "clahe": 0.25, "ar": "H&E"},
+    "IHC-DAB": {"mid": 0.72, "sat": 0.26, "sharp": 0.40, "clahe": 0.20, "ar": "هستوكيمياء مناعية DAB"},
+    "Masson trichrome": {"mid": 0.64, "sat": 0.34, "sharp": 0.40, "clahe": 0.25, "ar": "ماسون ثلاثي الألوان"},
+    "Sirius red": {"mid": 0.66, "sat": 0.34, "sharp": 0.40, "clahe": 0.20, "ar": "سيريوس الأحمر"},
+    "PAS": {"mid": 0.66, "sat": 0.30, "sharp": 0.45, "clahe": 0.25, "ar": "PAS"},
+    "Other": {"mid": 0.66, "sat": 0.28, "sharp": 0.40, "clahe": 0.20, "ar": "أخرى"},
+}
+SOURCES = {"auto": ("Auto-detect", "تحديد تلقائي"), "camera": ("Microscope camera / slide scanner", "كاميرا المجهر / ماسح الشرائح"),
+           "phone": ("Phone through the eyepiece", "موبايل من خلال العدسة العينية")}
+LEVELS = {"light": (0.6, "Light", "خفيف"), "standard": (1.0, "Standard", "قياسي"), "strong": (1.3, "Strong", "قوي")}
+
+
+def _stain_preset_name(img, stain):
+    if stain in STAIN_PRESETS:
+        return stain
+    return "IHC-DAB" if guess_stain(img) == "IHC" else "H&E"
+
+
+def _tissue_stats(f):
+    lum = f.mean(2)
+    bg, _ = background_colour(f)
+    bgl = float(np.mean(bg)) if bg is not None else 2.0
+    tissue = lum < min(bgl - 0.06, 0.97)
+    if tissue.mean() < 0.03:
+        tissue = np.ones_like(lum, bool)
+    hsv = color.rgb2hsv(f)
+    return float(np.median(lum[tissue])), float(np.median(hsv[..., 1][tissue]))
+
+
+def publication_ready(img: np.ndarray, stain: str = "auto", source: str = "auto", level: str = "standard"):
+    """One-click, journal-safe enhancement. Builds a pipeline of disclosed global operations suited to the stain and to
+    how the image was acquired, applies it, and verifies structure stage by stage (weakening the neighbourhood filters
+    if needed). Returns (processed uint8, steps_done, integrity report, steps, info)."""
+    preset_name = _stain_preset_name(img, stain)
+    P = STAIN_PRESETS[preset_name]
+    k = LEVELS.get(level, LEVELS["standard"])[0]
+    steps = []
+    work = img
+    box = eyepiece_crop_box(img) if source in ("auto", "phone") else None
+    if box:
+        steps.append({"op": "crop", "params": {"box": box}})
+        work = apply_pipeline(img, steps)[0]
+    phone = bool(box) or source == "phone"
+    f = to_float(work)
+    nz = noise_sigma(f) * 255
+    if nz > 2.2 or phone:
+        steps.append({"op": "denoise", "params": {"strength": round(min(0.6, (0.35 if phone else 0.25) + 0.04 * nz), 2)}})
+    if phone or shading_surface(f)[1] > 0.035 or shading_chroma(f) > 0.025:
+        steps.append({"op": "flatfield", "params": {"strength": 1.0}})
+    steps.append({"op": "background_white", "params": {"target": 0.955, "strength": 1.0}})
+    steps.append({"op": "black_point", "params": {"pct": 0.3, "target": round(float(np.clip(0.19 - 0.07 * k, 0.06, 0.16)), 3),
+                                                  "max_slope": round(1.8 + 0.7 * k, 2) if not phone else 2.0}})
+    # mid-tones and saturation measured after the linear steps
+    tmp = to_float(apply_pipeline(img, steps)[0])
+    mid, sat = _tissue_stats(tmp)
+    g = math.log(max(min(mid, 0.95), 0.05)) / math.log(P["mid"])
+    has_bg = background_colour(tmp)[0] is not None
+    g = float(np.clip(1 + (g - 1) * min(k, 1.0), 0.95, 1.4 if has_bg else 1.15))
+    if abs(g - 1) > 0.04:
+        steps.append({"op": "gamma", "params": {"gamma": round(g, 2)}})
+    fac = float(np.clip((P["sat"] / max(sat, 0.03)) ** (0.6 * min(k, 1.2)), 0.85, 1.4))
+    if fac < 1 and sat < 1.6 * P["sat"]:  # only tone down clearly over-saturated images
+        fac = max(fac, 0.97)
+    if abs(fac - 1) > 0.04:
+        steps.append({"op": "saturation", "params": {"factor": round(fac, 2)}})
+    steps.append({"op": "clahe", "params": {"strength": round(min(0.5, P["clahe"] * k), 2)}})
+    # final touch-up: saturation/local contrast can re-tint a near-neutral background slightly
+    steps.append({"op": "background_white", "params": {"target": 0.96, "strength": 1.0}})
+    small = min(f.shape[:2]) < 700
+    steps.append({"op": "sharpen", "params": {"amount": round(min(0.8, P["sharp"] * k * (0.8 if phone else 1.0)), 2),
+                                              "radius": 0.8 if small else (1.4 if phone else 1.0)}})
+    out, done, rep, steps = auto_enhance(img, steps)
+    info = {"stain": preset_name, "source": "phone" if phone else "camera", "level": level, "cropped": bool(box)}
+    return out, done, rep, steps, info
+
+
+# ----------------------------------------------------------------------------- measurement & batch
+MEASURE_SAFE_OPS = ("crop", "denoise", "flatfield", "background_white", "white_balance")
+QUANT_KINDS = ["IHC — DAB (H-score, % positive)", "Fibrosis — Masson trichrome", "Fibrosis — Sirius red",
+               "Fibrosis — Van Gieson", "H&E — inflammatory cell candidates", "H&E — congestion / RBC areas", "None (enhance only)"]
+
+
+def measurement_image(original: np.ndarray, steps: list[dict]) -> np.ndarray:
+    """Image used for quantification: the original with only illumination/white-reference corrections (crop, denoise,
+    flat-field, background whitening, white balance). Cosmetic steps (levels, gamma, saturation, CLAHE, sharpening,
+    stain normalisation) change optical densities and are therefore excluded from measurement."""
+    keep = [{"op": s["op"], "params": s.get("params", {})} for s in steps if s["op"] in MEASURE_SAFE_OPS]
+    return apply_pipeline(original, keep)[0] if keep else original
+
+
+def quantify(img: np.ndarray, kind: str, px_um: float = 0.0, dab=(0.08, 0.15, 0.22)) -> dict:
+    """Headless quantification used by the batch processor (same algorithms as the studio)."""
+    if kind.startswith("IHC"):
+        res = dict(ihc_dab(img, *dab)[0])
+    elif kind.startswith("Fibrosis"):
+        res = dict(fibrosis_area(img, kind.split("— ")[1])[0])
+        if px_um:
+            res["Collagen area (µm²)"] = res["Collagen area (px)"] * px_um ** 2
+    elif "inflammatory" in kind:
+        n = len(inflammatory_candidates(img))
+        res = {"Candidate mononuclear inflammatory cells": n}
+        if px_um:
+            res["Candidates per mm²"] = n / (img.shape[0] * img.shape[1] * (px_um / 1000) ** 2)
+    elif "congestion" in kind:
+        res = dict(congestion_area(img)[0])
+    else:
+        res = {}
+    return {k: (float(v) if isinstance(v, (np.floating, np.integer)) else v) for k, v in res.items()}

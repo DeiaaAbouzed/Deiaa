@@ -82,13 +82,21 @@ def results_to_docx(results: list[Result], path: str, include_methods=True):
                 p = doc.add_paragraph("⚠ " + b.content)
                 p.runs[0].font.color.rgb = RGBColor(0xB0, 0x60, 0x00)
             elif b.kind == "interpret":
-                txt = b.content.get(SETTINGS.language) or b.content["en"]
-                p = doc.add_paragraph()
-                r = p.add_run("Interpretation: " if SETTINGS.language == "en" else "التفسير: ")
-                r.bold = True
-                p.add_run(txt)
-                if SETTINGS.language == "ar":
-                    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                il = getattr(SETTINGS, "interp_lang", "same")
+                langs = [SETTINGS.language] if il == "same" else (["en", "ar"] if il == "both" else [il])
+                for lg in langs:
+                    txt = b.content.get(lg) or b.content["en"]
+                    p = doc.add_paragraph()
+                    r = p.add_run("Interpretation: " if lg == "en" else "التفسير: ")
+                    r.bold = True
+                    p.add_run(txt)
+                    if lg == "ar":
+                        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                        from docx.oxml import OxmlElement
+                        from docx.oxml.ns import qn
+                        p._p.get_or_add_pPr().append(OxmlElement("w:bidi"))
+                        for run in p.runs:
+                            rpr = run._r.get_or_add_rPr(); rtl = OxmlElement("w:rtl"); rpr.append(rtl)
             elif b.kind == "methods" and include_methods:
                 p = doc.add_paragraph()
                 p.add_run("Methods/Results text: ").bold = True

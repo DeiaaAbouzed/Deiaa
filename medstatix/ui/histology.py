@@ -29,6 +29,22 @@ LABEL_PRESETS = ["Inflammatory cells", "Lymphocytic infiltrate", "Neutrophils", 
                  "Oedema", "Hyperplasia", "Mitotic figure", "Giant cell", "Granuloma", "Positive (DAB) cells", "Negative cells"]
 
 
+def run_busy(parent, text, fn):
+    """Run fn() in a worker thread while showing a small busy dialog; returns fn's result (re-raises errors)."""
+    import concurrent.futures, time
+    from PySide6.QtWidgets import QProgressDialog
+    dlg = QProgressDialog(text, None, 0, 0, parent)
+    dlg.setWindowTitle("MedStatix Pro"); dlg.setWindowModality(Qt.WindowModal); dlg.setMinimumDuration(300)
+    dlg.setCancelButton(None)
+    with concurrent.futures.ThreadPoolExecutor(1) as ex:
+        fut = ex.submit(fn)
+        while not fut.done():
+            QApplication.processEvents()
+            time.sleep(0.03)
+    dlg.close()
+    return fut.result()
+
+
 def T(en, ar):
     return ar if SETTINGS.language == "ar" else en
 
@@ -422,6 +438,14 @@ class HistologyStudio(QWidget):
         cl.addWidget(self._annot_bar())
         self.view = HistoView()
         cl.addWidget(self.view, 1)
+        baw = QWidget(); baw.setLayoutDirection(Qt.LeftToRight); ba = QHBoxLayout(baw); ba.setContentsMargins(0, 0, 0, 0)
+        ba.addWidget(QLabel(T("Before", "قبل")))
+        self.ba = QSlider(Qt.Horizontal); self.ba.setRange(0, 100); self.ba.setValue(0); self.ba.setLayoutDirection(Qt.LeftToRight)
+        self.ba.setToolTip(T("Drag to compare the original (left) with the processed image (right)",
+                             "اسحب للمقارنة بين الأصل (يسار) والصورة المحسنة (يمين)"))
+        self.ba.valueChanged.connect(self.refresh_view)
+        ba.addWidget(self.ba, 1); ba.addWidget(QLabel(T("After", "بعد")))
+        cl.addWidget(baw)
         self.info_lbl = QLabel(T("Open an image (or a sample) to begin.", "افتح صورة (أو صورة نموذجية) للبدء.")); self.info_lbl.setObjectName("hint")
         cl.addWidget(self.info_lbl)
         split.addWidget(center)
@@ -450,8 +474,30 @@ class HistologyStudio(QWidget):
         f.addRow(T("Pixel size", "حجم البكسل"), self.px)
         self.show_orig = QCheckBox(T("Show original", "عرض الأصل")); self.show_orig.toggled.connect(self.refresh_view); f.addRow(self.show_orig)
         il.addWidget(g)
-        # enhance
-        g = QGroupBox(T("2 · Enhance (global, journal-safe)", "٢ · تحسين الجودة (كلي ومقبول في المجلات)")); f = QFormLayout(g)
+        # one-click publication-ready
+        g = QGroupBox(T("2 · Publication-ready in one click", "٢ · تجهيز للنشر بضغطة واحدة")); f = QFormLayout(g)
+        self.pr_stain = QComboBox(); self.pr_stain.addItem(T("Auto-detect", "تحديد تلقائي"), "auto")
+        for k, pv in IC.STAIN_PRESETS.items():
+            self.pr_stain.addItem(pv["ar"] if SETTINGS.language == "ar" else k, k)
+        self.pr_source = QComboBox()
+        for k, (en, ar) in IC.SOURCES.items():
+            self.pr_source.addItem(T(en, ar), k)
+        self.pr_level = QComboBox()
+        for k, (_, en, ar) in IC.LEVELS.items():
+            self.pr_level.addItem(T(en, ar), k)
+        self.pr_level.setCurrentIndex(1)
+        f.addRow(T("Stain", "الصبغة"), self.pr_stain); f.addRow(T("Taken with", "طريقة التصوير"), self.pr_source)
+        f.addRow(T("Strength", "الدرجة"), self.pr_level)
+        go = QPushButton("✨ " + T("Make publication-ready", "تجهيز الصورة للنشر")); go.setObjectName("primary"); go.setMinimumHeight(40)
+        go.clicked.connect(self.publication_ready); f.addRow(go)
+        self.pr_badge = QLabel(""); self.pr_badge.setWordWrap(True); f.addRow(self.pr_badge)
+        il.addWidget(g)
+        # manual / advanced
+        g = QGroupBox(T("Advanced: inspect and adjust manually", "متقدم: فحص الصورة والتعديل اليدوي")); f = QFormLayout(g)
+        g.setCheckable(True); g.setChecked(False)
+        adv_inner = QWidget(); f2 = QFormLayout(adv_inner); f2.setContentsMargins(0, 0, 0, 0)
+        g.toggled.connect(adv_inner.setVisible); adv_inner.setVisible(False); f.addRow(adv_inner)
+        f = f2
         row = QHBoxLayout()
         qb = QPushButton("🔍 " + T("Inspect image", "فحص الصورة")); qb.setObjectName("primary"); qb.clicked.connect(self.inspect_image)
         qb.setToolTip(T("Detect blur, uneven illumination, colour cast, exposure, noise, faded stain and folds, and suggest fixes",
@@ -460,7 +506,10 @@ class HistologyStudio(QWidget):
         ab.setToolTip(T("Apply the suggested global corrections and verify that structure is unchanged",
                         "تطبيق التصحيحات الكلية المقترحة مع التحقق من عدم تغير التركيب"))
         row.addWidget(qb); row.addWidget(ab); f.addRow(row)
+        self.c_crop = QCheckBox(T("Crop to the eyepiece field (phone photos)", "قص دائرة العدسة (صور الموبايل)")); f.addRow(self.c_crop)
         self.c_flat = QCheckBox(T("Correct uneven illumination (flat-field)", "تصحيح الإضاءة غير المتساوية (Flat-field)")); f.addRow(self.c_flat)
+        self.c_bgw = QCheckBox(T("Whiten background (neutral white slide)", "تبييض الخلفية (خلفية بيضاء محايدة)")); f.addRow(self.c_bgw)
+        self.c_haze = QCheckBox(T("Remove haze (black point)", "إزالة الضبابية (نقطة الأسود)")); f.addRow(self.c_haze)
         self.c_wb = QCheckBox(T("White balance", "توازن الأبيض")); f.addRow(self.c_wb)
         self.c_auto = QCheckBox(T("Auto contrast stretch", "تمديد تباين تلقائي")); f.addRow(self.c_auto)
         self.s_bright = self._slider(-25, 25, 0); f.addRow(T("Brightness", "الإضاءة"), self.s_bright)
@@ -470,8 +519,10 @@ class HistologyStudio(QWidget):
         self.norm = QComboBox(); self.norm.addItems([T("No stain normalization", "بدون توحيد صبغة"), "Reinhard (any stain)", "Macenko (H&E only)"])
         f.addRow(T("Stain", "الصبغة"), self.norm)
         self.s_denoise = self._slider(0, 100, 0); f.addRow(T("Denoise", "إزالة الضوضاء"), self.s_denoise)
+        self.s_clahe = self._slider(0, 50, 0); f.addRow(T("Local contrast", "تباين موضعي"), self.s_clahe)
         self.s_sharpen = self._slider(0, 80, 0); f.addRow(T("Sharpen", "زيادة الحدة"), self.s_sharpen)
         self._sharpen_radius = 1.0
+        self._extra = {}
         row = QHBoxLayout()
         ap = QPushButton(T("Apply", "تطبيق")); ap.setObjectName("primary"); ap.clicked.connect(self.apply_enhance)
         rs = QPushButton(T("Reset", "إعادة")); rs.clicked.connect(self.reset_enhance)
@@ -506,7 +557,8 @@ class HistologyStudio(QWidget):
                         (T("Save before / after comparison…", "حفظ مقارنة قبل / بعد…"), self.save_before_after),
                         (T("Save edit log + Methods text…", "حفظ سجل التعديلات ونص الطرق…"), self.save_log),
                         (T("Send report to Results / Word", "إرسال التقرير إلى النتائج / Word"), self.send_report),
-                        (T("Figure panel composer (A, B, C…)", "تركيب لوحة صور (A وB وC…)"), self.composer)]:
+                        (T("Figure panel composer (A, B, C…)", "تركيب لوحة صور (A وB وC…)"), self.composer),
+                        ("📂 " + T("Batch: a whole folder → statistics…", "معالجة مجلد كامل ← الإحصاء…"), self.batch)]:
             bt = QPushButton(txt); bt.clicked.connect(fn); f.addRow(bt)
         il.addWidget(g)
         il.addStretch(1)
@@ -573,20 +625,47 @@ class HistologyStudio(QWidget):
             fn = self.samples.itemText(i)
             self.load(IC.load_image(os.path.join(SAMPLE_DIR, fn)), fn)
 
+    @property
+    def base(self):
+        """The original image, cropped like the processed one (so the two can be compared pixel for pixel)."""
+        crops = [s for s in (self.steps_done or []) if s["op"] == "crop"]
+        if not crops or self.original is None:
+            return self.original
+        return IC.apply_pipeline(self.original, [{"op": "crop", "params": crops[0]["params"]}])[0]
+
     def refresh_view(self):
         if self.original is None:
             return
-        self.view.set_image(self.original if self.show_orig.isChecked() else self.processed, keep_view=True)
+        if self.show_orig.isChecked():
+            self.view.set_image(self.base, keep_view=True); return
+        v = self.ba.value()
+        if v > 0 and self.steps_done:
+            base, pr = self.base, self.processed
+            if base.shape == pr.shape:
+                x = int(pr.shape[1] * v / 100)
+                comp = pr.copy(); comp[:, :x] = base[:, :x]
+                lw = max(2, pr.shape[1] // 400)
+                comp[:, max(0, x - lw // 2):x + (lw + 1) // 2] = 255
+                self.view.set_image(comp, keep_view=True); return
+        self.view.set_image(self.processed, keep_view=True)
 
     # ---------------- enhance
     def build_steps(self):
         """Manual controls → pipeline, in the standard order (denoise first so later contrast changes do not amplify
         noise; sharpen last)."""
         st = []
+        if self.c_crop.isChecked():
+            box = self._extra.get("crop") or (IC.eyepiece_crop_box(self.original) if self.original is not None else None)
+            if box:
+                st.append({"op": "crop", "params": {"box": box}})
         if self.s_denoise.value() > 0:
             st.append({"op": "denoise", "params": {"strength": self.s_denoise.value() / 100}})
         if self.c_flat.isChecked():
             st.append({"op": "flatfield", "params": {"strength": 1.0}})
+        if self.c_bgw.isChecked():
+            st.append({"op": "background_white", "params": {"target": 0.955, "strength": 1.0}})
+        if self.c_haze.isChecked():
+            st.append({"op": "black_point", "params": self._extra.get("black_point", {"pct": 0.3, "target": 0.12, "max_slope": 2.5})})
         if self.c_wb.isChecked():
             st.append({"op": "white_balance"})
         if self.c_auto.isChecked():
@@ -602,6 +681,10 @@ class HistologyStudio(QWidget):
             st.append({"op": "reinhard"})
         elif self.norm.currentIndex() == 2:
             st.append({"op": "macenko"})
+        if self.s_clahe.value() > 0:
+            st.append({"op": "clahe", "params": {"strength": self.s_clahe.value() / 100}})
+            if self.c_bgw.isChecked():
+                st.append({"op": "background_white", "params": {"target": 0.96, "strength": 1.0}})
         if self.s_sharpen.value() > 0:
             st.append({"op": "sharpen", "params": {"amount": self.s_sharpen.value() / 100, "radius": self._sharpen_radius}})
         return st
@@ -611,7 +694,15 @@ class HistologyStudio(QWidget):
         self.reset_controls()
         for stp in steps:
             op, p = stp["op"], stp.get("params", {})
-            if op == "flatfield":
+            if op == "crop":
+                self.c_crop.setChecked(True); self._extra["crop"] = p.get("box")
+            elif op == "background_white":
+                self.c_bgw.setChecked(True)
+            elif op == "black_point":
+                self.c_haze.setChecked(True); self._extra["black_point"] = dict(p)
+            elif op == "clahe":
+                self.s_clahe.setValue(int(round(p.get("strength", 0.25) * 100)))
+            elif op == "flatfield":
                 self.c_flat.setChecked(True)
             elif op == "white_balance":
                 self.c_wb.setChecked(True)
@@ -633,10 +724,14 @@ class HistologyStudio(QWidget):
                 self.norm.setCurrentIndex(2)
 
     def reset_controls(self):
-        for sl, v in [(self.s_bright, 0), (self.s_contrast, 100), (self.s_gamma, 100), (self.s_sat, 100), (self.s_denoise, 0), (self.s_sharpen, 0)]:
+        for sl, v in [(self.s_bright, 0), (self.s_contrast, 100), (self.s_gamma, 100), (self.s_sat, 100), (self.s_denoise, 0),
+                      (self.s_sharpen, 0), (self.s_clahe, 0)]:
             sl.setValue(v)
-        self.c_wb.setChecked(False); self.c_auto.setChecked(False); self.c_flat.setChecked(False); self.norm.setCurrentIndex(0)
+        for c in (self.c_wb, self.c_auto, self.c_flat, self.c_crop, self.c_bgw, self.c_haze):
+            c.setChecked(False)
+        self.norm.setCurrentIndex(0)
         self._sharpen_radius = 1.0
+        self._extra = {}
 
     def _stain_kind(self):
         return "auto"
@@ -646,7 +741,7 @@ class HistologyStudio(QWidget):
             QMessageBox.information(self, "", T("Open an image first.", "افتح صورة أولًا.")); return
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
-            qc = IC.image_qc(self.original, self._stain_kind())
+            qc = IC.image_qc(self.base, self._stain_kind())
         finally:
             QApplication.restoreOverrideCursor()
         self.qc_before = qc
@@ -704,27 +799,74 @@ class HistologyStudio(QWidget):
         if self.original is None:
             return
         steps = self.build_steps()
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+        orig = self.original
+
+        def work():
+            processed, done = IC.apply_pipeline(orig, steps)
+            rep = IC.pipeline_integrity(orig, steps) if steps else None
+            crops = [s_ for s_ in steps if s_["op"] == "crop"]
+            base = IC.apply_pipeline(orig, crops)[0] if crops else orig
+            qb = IC.image_qc(base)
+            qa = IC.image_qc(processed) if steps else None
+            return processed, done, rep, qb, qa
         try:
-            self.processed, self.steps_done = IC.apply_pipeline(self.original, steps)
-            rep = IC.pipeline_integrity(self.original, steps) if steps else None
-            if getattr(self, "qc_before", None) is None:
-                self.qc_before = IC.image_qc(self.original, self._stain_kind())
-            self.qc_after = IC.image_qc(self.processed, self._stain_kind()) if steps else None
+            self.processed, self.steps_done, rep, self.qc_before, self.qc_after = run_busy(
+                self, T("Processing and verifying the image…", "جارٍ المعالجة والتحقق من سلامة الصورة…"), work)
         except Exception as e:
-            QApplication.restoreOverrideCursor()
             QMessageBox.critical(self, "", str(e)); return
-        QApplication.restoreOverrideCursor()
         self.show_orig.setChecked(False)
-        self.refresh_view()
         self.integrity = rep
+        self.ba.setValue(0)
+        self.refresh_view()
         self.render_report()
+        self._badge()
+
+    def publication_ready(self):
+        if self.original is None:
+            QMessageBox.information(self, "", T("Open an image first.", "افتح صورة أولًا.")); return
+        orig = self.original
+        stain, source, level = self.pr_stain.currentData(), self.pr_source.currentData(), self.pr_level.currentData()
+
+        def work():
+            out, done, rep, steps, info = IC.publication_ready(orig, stain, source, level)
+            crops = [s_ for s_ in steps if s_["op"] == "crop"]
+            base = IC.apply_pipeline(orig, crops)[0] if crops else orig
+            qs = "IHC" if info["stain"] == "IHC-DAB" else "H&E"
+            return out, done, rep, steps, info, IC.image_qc(base, qs), IC.image_qc(out, qs)
+        try:
+            out, done, rep, steps, info, qb, qa = run_busy(
+                self, T("Preparing the image for publication (enhance + integrity check)…",
+                        "جارٍ تجهيز الصورة للنشر (تحسين + فحص السلامة)…"), work)
+        except Exception as e:
+            QMessageBox.critical(self, "", str(e)); return
+        self.set_controls(steps)
+        self.processed, self.steps_done, self.integrity, self.qc_before, self.qc_after = out, done, rep, qb, qa
+        self.show_orig.setChecked(False)
+        self.ba.setValue(0)
+        self.refresh_view(); self.render_report(); self._badge(info)
+
+    def _badge(self, info=None):
+        qb, qa, rep = self.qc_before, self.qc_after, self.integrity
+        if not qb or not qa:
+            self.pr_badge.setText(""); return
+        ok = rep is None or rep.get("passed")
+        txt = (f"<span style='font-size:15px'><b style='color:{score_colour(qb['score'])}'>{qb['score']}</b> → "
+               f"<b style='color:{score_colour(qa['score'])}'>{qa['score']}</b>/100</span> &nbsp; "
+               + ("<b style='color:#2E7D32'>✔ " + T("structure unchanged", "التركيب لم يتغير") + "</b>" if ok else
+                  "<b style='color:#C62828'>⚠ " + T("check settings", "راجع الإعدادات") + "</b>"))
+        if info:
+            st = IC.STAIN_PRESETS[info["stain"]]["ar"] if SETTINGS.language == "ar" else info["stain"]
+            txt += "<br><span style='color:#5B6B82'>" + T("Stain", "الصبغة") + f": {st}" + (
+                " · " + T("eyepiece field cropped", "تم قص دائرة العدسة") if info.get("cropped") else "") + "</span>"
+        txt += "<br><span style='color:#5B6B82'>" + T("Drag the Before/After slider under the image to compare.",
+                                                      "اسحب شريط قبل/بعد أسفل الصورة للمقارنة.") + "</span>"
+        self.pr_badge.setText(txt)
 
     def reset_enhance(self):
         self.reset_controls()
         if self.original is not None:
             self.processed = self.original.copy(); self.steps_done = []; self.integrity = None; self.qc_after = None
-            self.refresh_view(); self.render_report()
+            self.refresh_view(); self.render_report(); self.pr_badge.setText("")
 
     def render_report(self):
         log = IC.EditLog(self.name, self.steps_done)
@@ -780,13 +922,13 @@ class HistologyStudio(QWidget):
         img = self.processed
         q = self.qtype.currentText()
         quant_note = None
-        if any(st["op"] in ("reinhard", "macenko") for st in self.steps_done):
-            # stain normalisation re-maps stain colours to a reference: fine for display, but measurements
-            # must use the native stain colours (only white balance is kept)
-            wb = [{"op": "white_balance"}] if any(st["op"] == "white_balance" for st in self.steps_done) else []
-            img = IC.apply_pipeline(self.original, wb)[0] if wb else self.original
-            quant_note = T("Measured on the native-colour image (stain normalisation is for display only).",
-                           "تم القياس على الصورة بألوانها الأصلية (توحيد الصبغة للعرض فقط).")
+        if any(st["op"] not in IC.MEASURE_SAFE_OPS for st in self.steps_done):
+            # cosmetic steps (levels, gamma, saturation, CLAHE, sharpening, stain normalisation) change optical
+            # densities: measure on the native-colour image with only illumination / white-reference corrections
+            img = IC.measurement_image(self.original, self.steps_done)
+            quant_note = T("Measured on the native-colour image (illumination and white reference corrected only; "
+                           "display adjustments are not used for measurement).",
+                           "تم القياس على الصورة بألوانها الأصلية (بعد تصحيح الإضاءة والأبيض فقط؛ تعديلات العرض لا تدخل في القياس).")
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             self.view.clear_overlays(); self.view.clear_candidates()
@@ -837,7 +979,7 @@ class HistologyStudio(QWidget):
             it.setFlags(QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemIsMovable)
         self.view.candidate_items = []
         if self.last_quant is not None and "Candidate mononuclear inflammatory cells" in self.last_quant:
-            self.last_quant = {"Confirmed inflammatory cells": n, **({"Cells per mm²": n / (self.original.shape[0] * self.original.shape[1] * (self.px.value() / 1000) ** 2)} if self.px.value() else {})}
+            self.last_quant = {"Confirmed inflammatory cells": n, **({"Cells per mm²": n / (self.processed.shape[0] * self.processed.shape[1] * (self.px.value() / 1000) ** 2)} if self.px.value() else {})}
             self.render_report()
 
     def discard_detections(self):
@@ -864,11 +1006,13 @@ class HistologyStudio(QWidget):
             QMessageBox.information(self, "", T("Enter the pixel size (µm/px) first — from your microscope calibration.",
                                                 "أدخل حجم البكسل (ميكرومتر/بكسل) أولًا من معايرة المجهر."))
             return
-        um, ok = QInputDialog.getDouble(self, T("Scale bar", "مقياس الرسم"), T("Length (µm)", "الطول (ميكرومتر)"), 50, 1, 5000, 0)
+        H, W = self.processed.shape[:2]
+        raw = W * 0.18 * px
+        nice = min([1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000], key=lambda v: abs(v - raw))
+        um, ok = QInputDialog.getDouble(self, T("Scale bar", "مقياس الرسم"), T("Length (µm)", "الطول (ميكرومتر)"), nice, 1, 5000, 0)
         if not ok:
             return
         L = um / px
-        H, W = self.original.shape[:2]
         th = max(4, H / 120)
         x, y = W - L - W * 0.04, H - H * 0.06
         bar = QGraphicsRectItem(x, y, L, th); bar.setBrush(QBrush(self.view.color)); bar.setPen(QPen(Qt.NoPen))
@@ -923,7 +1067,7 @@ class HistologyStudio(QWidget):
         if self.processed is None:
             return
         self._ask_export(os.path.splitext(self.name)[0] + "_before_after",
-                         lambda: IC.compose_panels([self.original, self.processed], ncols=2,
+                         lambda: IC.compose_panels([self.base, self.processed], ncols=2,
                                                    labels=[T("A  Original", "A  Original"), "B  Processed"]))
 
     def save_log(self):
@@ -970,13 +1114,22 @@ class HistologyStudio(QWidget):
         with styled():
             fig = Figure(figsize=(9, 4.5))
             ax1, ax2 = fig.subplots(1, 2)
-            ax1.imshow(self.original); ax1.set_title("Original"); ax1.axis("off")
+            ax1.imshow(self.base); ax1.set_title("Original"); ax1.axis("off")
             ax2.imshow(self.view.render_image(True) if self.view.annotation_items() or self.view.overlay_items else self.processed)
             ax2.set_title("Processed / annotated"); ax2.axis("off")
             fig.tight_layout()
         res.figure(fig, "Original and processed image (global adjustments only).")
         res.methods(IC.EditLog(self.name, self.steps_done).methods_text())
         self.send_result.emit(res)
+
+    def batch(self):
+        from .histobatch import BatchDialog
+        dlg = BatchDialog(self)
+        dlg.px.setValue(self.px.value())
+        if dlg.exec() == QDialog.Accepted:
+            rows = dlg.numeric_rows()
+            if rows is not None and len(rows):
+                self.send_rows.emit(rows)
 
     def composer(self):
         PanelComposer(self, lambda: self.view.render_image(self.c_overlay.isChecked()) if self.original is not None else None).exec()

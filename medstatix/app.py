@@ -20,7 +20,14 @@ def selftest() -> int:
         _, _, rep2, _ = IC.auto_enhance(img, qc["steps"])
         lines.append(f"   QC score={qc['score']} auto-enhance integrity={rep2['passed']}")
         ok &= bool(rep2["passed"])
+        _, _, rep3, _, info = IC.publication_ready(img)
+        lines.append(f"   publication-ready ({info['stain']}) integrity={rep3['passed']}")
+        ok &= bool(rep3["passed"])
     import scipy.stats, statsmodels.api  # noqa: F401
+    from .core import animal as AN
+    from .report import manuscript, journals  # noqa: F401
+    ok &= [v for _, v, _, _ in AN.rout([10.1, 9.8, 10.3, 9.9, 10.0, 10.2, 9.7, 25.0])] == [25.0]
+    import docx  # noqa: F401
     lines.append("OK" if ok else "FAIL")
     print("\n".join(lines))
     return 0 if ok else 1

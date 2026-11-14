@@ -526,8 +526,18 @@ class ExportOptionsDialog(QDialog):
         f.addRow(t("Resolution", "الدقة"), self.dpi)
         self.width = QComboBox()
         self.width.addItem(t("Keep current size", "الحجم الحالي"), 0)
-        for mm, en, ar in [(85, "Single column (85 mm)", "عمود واحد (85 مم)"), (114, "1.5 columns (114 mm)", "عمود ونصف (114 مم)"),
-                           (174, "Full page width (174 mm)", "عرض الصفحة (174 مم)")]:
+        widths = [(85, "Single column (85 mm)", "عمود واحد (85 مم)"), (114, "1.5 columns (114 mm)", "عمود ونصف (114 مم)"),
+                  (174, "Full page width (174 mm)", "عرض الصفحة (174 مم)")]
+        from ..report.journals import JOURNALS
+        jn = getattr(SETTINGS, "journal", "")
+        if jn in JOURNALS:
+            widths = [(mm, f"{jn}: {k} ({mm} mm)", f"{jn}: {k} ({mm} مم)") for k, mm in JOURNALS[jn]["widths"].items()]
+            self.dpi.setCurrentIndex(EXPORT_DPIS.index(600) if JOURNALS[jn]["dpi_combo"] >= 500 else EXPORT_DPIS.index(300))
+            fmt0 = JOURNALS[jn]["formats"][0]
+            for i in range(self.fmt.count()):
+                if self.fmt.itemData(i) == fmt0:
+                    self.fmt.setCurrentIndex(i)
+        for mm, en, ar in widths:
             self.width.addItem(t(en, ar), mm)
         if allow_width:
             f.addRow(t("Print width", "عرض الطباعة"), self.width)

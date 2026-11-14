@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 APP_NAME = "MedStatix Pro"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 
 
 # ----------------------------------------------------------------------------
@@ -161,7 +161,9 @@ class Result:
         counters = counters if counters is not None else {"t": 0, "f": 0}
         tcount, fcount = counters["t"], counters["f"]
         for b in self.blocks:
-            if b.kind == "heading":
+            if b.kind == "html":
+                parts.append(str(b.content))
+            elif b.kind == "heading":
                 parts.append(f"<h3>{html.escape(b.content)}</h3>")
             elif b.kind == "text":
                 parts.append(f"<p>{html.escape(b.content)}</p>")

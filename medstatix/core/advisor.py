@@ -15,6 +15,12 @@ from .data import var_kind, numeric, _level_order
 from .result import Result, AnalysisError, fmt_p
 
 
+def _pe(p):
+    """'= 0.023' or '< 0.001' (so text reads 'p = 0.023' / 'p < 0.001')."""
+    t = fmt_p(p)
+    return t if t.startswith("<") else "= " + t
+
+
 def _normal(x):
     x = np.asarray(x, float)
     x = x[~np.isnan(x)]
@@ -53,17 +59,17 @@ def auto_analyze(df: pd.DataFrame, outcome: str, factor: str | None = None):
             all_norm = all(v[0] for v in norms.values())
             small = min(len(v) for v in groups.values())
             en.append(f"{len(levels)} independent groups (smallest n = {small}). Shapiro-Wilk: " +
-                      ", ".join(f"{k} p = {fmt_p(v[1])}" for k, v in norms.items()) + ".")
+                      ", ".join(f"{k} p {_pe(v[1])}" for k, v in norms.items()) + ".")
             ar.append(f"{len(levels)} مجموعات مستقلة (أصغر عدد = {small}). اختبار شابيرو-ويلك: " +
-                      "، ".join(f"{k} p = {fmt_p(v[1])}" for k, v in norms.items()) + ".")
+                      "، ".join(f"{k} p {_pe(v[1])}" for k, v in norms.items()) + ".")
             lev_p = stats.levene(*groups.values(), center="median")[1]
             if len(levels) >= 3:
                 # ANOVA assumes normal residuals; testing the pooled residuals avoids the inflated false-alarm
                 # rate of running one Shapiro-Wilk test per group
                 resid = np.concatenate([v - v.mean() for v in groups.values()])
                 all_norm, p_res = _normal(resid)
-                en.append(f"Normality of the ANOVA residuals (pooled, n = {len(resid)}): Shapiro-Wilk p = {fmt_p(p_res)}.")
-                ar.append(f"التوزيع الطبيعي لبواقي تحليل التباين (مجمّعة، العدد = {len(resid)}): شابيرو-ويلك p = {fmt_p(p_res)}.")
+                en.append(f"Normality of the ANOVA residuals (pooled, n = {len(resid)}): Shapiro-Wilk p {_pe(p_res)}.")
+                ar.append(f"التوزيع الطبيعي لبواقي تحليل التباين (مجمّعة، العدد = {len(resid)}): شابيرو-ويلك p {_pe(p_res)}.")
             if len(levels) == 2:
                 if all_norm:
                     aid, kw = "ttest_ind", {"outcome": outcome, "group": factor}
@@ -77,8 +83,8 @@ def auto_analyze(df: pd.DataFrame, outcome: str, factor: str | None = None):
                 if all_norm:
                     ph = "Tukey HSD" if lev_p >= 0.05 else "Games-Howell"
                     aid, kw = "anova1", {"outcome": outcome, "group": factor, "posthoc": ph}
-                    en.append(f"Normal data, ≥ 3 groups → one-way ANOVA; Levene p = {fmt_p(lev_p)} → {ph} post hoc.")
-                    ar.append(f"بيانات طبيعية و3 مجموعات أو أكثر ← تحليل التباين الأحادي؛ اختبار ليفين p = {fmt_p(lev_p)} ← اختبار {ph} البعدي.")
+                    en.append(f"Normal data, ≥ 3 groups → one-way ANOVA; Levene p {_pe(lev_p)} → {ph} post hoc.")
+                    ar.append(f"بيانات طبيعية و3 مجموعات أو أكثر ← تحليل التباين الأحادي؛ اختبار ليفين p {_pe(lev_p)} ← اختبار {ph} البعدي.")
                 else:
                     aid, kw = "kruskal", {"outcome": outcome, "group": factor}
                     en.append("Normality violated, ≥ 3 groups → Kruskal-Wallis with Dunn's post hoc.")
@@ -212,8 +218,8 @@ def _plan_group_test(y_by_group):
     lev = stats.levene(*groups, center="median")[1] if small >= 2 else 1.0
     if normal:
         ph = "Tukey" if lev >= 0.05 else "Games-Howell"
-        why_en = f"ANOVA residuals normal; variances {'equal' if lev >= 0.05 else 'unequal'} (Levene p = {fmt_p(lev)})"
-        why_ar = f"البواقي طبيعية؛ التباين {'متجانس' if lev >= 0.05 else 'غير متجانس'} (ليفين p = {fmt_p(lev)})"
+        why_en = f"ANOVA residuals normal; variances {'equal' if lev >= 0.05 else 'unequal'} (Levene p {_pe(lev)})"
+        why_ar = f"البواقي طبيعية؛ التباين {'متجانس' if lev >= 0.05 else 'غير متجانس'} (ليفين p {_pe(lev)})"
         return f"One-way ANOVA + {ph}", f"تحليل التباين الأحادي + {ph}", why_en, why_ar
     return "Kruskal-Wallis + Dunn", "كروسكال-واليس + دن", "residuals not normal", "البواقي غير طبيعية"
 

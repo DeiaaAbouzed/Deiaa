@@ -37,6 +37,19 @@ MedStatix Pro brings together what researchers usually spread across SPSS, Graph
 | Meta-analysis | FE/RE (REML, DL), OR/RR/MD/SMD/generic, I², τ², prediction interval, Egger, leave-one-out, forest and funnel plots |
 | Sample size | t-tests, proportions, ANOVA, correlation, log-rank (Schoenfeld), diagnostic sensitivity (Buderer), Mead's resource equation for animal studies |
 
+## New in v1.3
+
+- **One-click publication-ready histology and IHC images:** pick the stain (H&E, IHC-DAB, Masson, Sirius red, PAS or auto), the source (microscope camera, phone photo through the eyepiece, or auto) and the strength (light, standard, strong). The app crops the black eyepiece ring of phone photos, removes noise and uneven illumination, whitens the slide background, sets black point, mid-tones and saturation to the stain's target, adds mild local contrast and sharpening, and verifies every stage with the integrity check. A before/after slider sits under the image; manual controls are under "Advanced". Quantification is always done on the illumination-corrected original, never on cosmetic edits.
+- **Batch histology → statistics:** process a whole folder (groups from sub-folders or file-name prefixes), save the processed images, before/after pictures and edit logs, and send the measurements per image straight to the data sheet.
+- **Project files (.msx):** data, every analysis with its settings, edited figures, captions and the histology state in one file; re-run all analyses on corrected data in one click.
+- **Target-journal presets:** Elsevier, Springer, Nature Portfolio, Wiley, PLOS, Cell Press, MDPI (column widths, font, dpi, formats).
+- **Manuscript builder (Word):** Statistical analysis paragraph, a Results section that cites the numbered tables and figures, APA tables, figure legends and figures at journal size; optional histology methods and an Arabic translation for theses.
+- **Statistical report for reviewers:** effect sizes with 95% CI, assumption checks, sensitivity (minimum detectable effect) and a non-parametric robustness check for every analysis.
+- **Multi-panel figures:** charts and histology images on one page with A, B, C labels at journal width.
+- **Animal-study toolkit:** complete or weight-stratified randomisation, Mead's equation and power-based sample size, Grubbs and ROUT outliers with logged exclusion, and the ARRIVE 2.0 checklist exported to Word.
+- **Study templates:** oxidative stress, liver and kidney function, cytokines, apoptosis, histopathology scores, organ weights, LD50 and dose-response entry sheets.
+- **Bilingual interpretation:** export the interpretation in English, Arabic or both.
+
 ## New in v1.2
 
 - **Prism-style figure editor:** chart type (scatter, bar, box, violin), colour per group and palettes, point size/shape, fonts, axes (range, log), group order, size in mm. Significance: significant pairs, all pairs, versus a reference group or a custom selection; brackets are stacked automatically so they never overlap; stars, exact p or both; standard or GraphPad thresholds; ns on/off; symbols mode (* / #) for many groups.
@@ -81,7 +94,7 @@ python run_medstatix.py
 
 **Option A, on a Windows PC:** install Python 3.12 (64-bit) and, optionally, [Inno Setup 6](https://jrsoftware.org/isinfo.php), then double-click `build\build_windows.bat`. You get:
 - `dist\MedStatixPro\MedStatixPro.exe`, a portable app with no Python needed
-- `dist\installer\MedStatixPro-Setup-1.2.0.exe`, an installer with Start-menu and desktop shortcuts
+- `dist\installer\MedStatixPro-Setup-1.3.0.exe`, an installer with Start-menu and desktop shortcuts
 
 **Option B, automatically on GitHub:** push this folder to a GitHub repository. The workflow `.github/workflows/build-windows.yml` builds the installer and a portable ZIP on Windows. Run it from the *Actions* tab, or push a tag such as `v1.0.0` to publish a release.
 

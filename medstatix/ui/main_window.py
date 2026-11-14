@@ -12,7 +12,7 @@ from PySide6.QtGui import QAction, QIcon, QImage, QKeySequence, QPixmap, QTextDo
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDoubleSpinBox, QFileDialog, QFormLayout, QGroupBox,
                                QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QListView, QListWidget,
                                QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QSplitter, QTableView, QTabWidget,
-                               QTextBrowser, QToolBar, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QComboBox)
+                               QTextBrowser, QToolBar, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QComboBox, QDialog)
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 
 from ..analyses import REGISTRY, CATEGORIES, run
@@ -128,11 +128,26 @@ class MainWindow(QMainWindow):
         self.a_settings = self._act("⚙  " + tr("settings"), self.open_settings, "Ctrl+,")
         self.a_lang = self._act("🌍  " + tr("language"), self.toggle_language, "Ctrl+L")
         self.a_clear = self._act("🧹  " + tr("clear_output"), self.clear_output)
+        A = SETTINGS.language == "ar"
+        self.a_psave = self._act("🗂  " + ("حفظ المشروع" if A else "Save project"), self.save_project, "Ctrl+Shift+S")
+        self.a_popen = self._act("📁  " + ("فتح مشروع" if A else "Open project"), lambda: self.open_project(), "Ctrl+Shift+O")
+        self.a_rerun = self._act("🔁  " + ("إعادة تشغيل كل التحليلات على البيانات الحالية" if A else "Re-run all analyses on current data"),
+                                 self.rerun_all_current, "Ctrl+Shift+R")
+        self.a_journal = self._act("📰  " + ("المجلة المستهدفة (مقاسات الرسوم)…" if A else "Target journal (figure specs)…"), self.choose_journal)
+        self.a_ms = self._act("📄  " + ("بناء المخطوطة (Word)…" if A else "Build manuscript (Word)…"), self.build_manuscript, "Ctrl+Shift+M")
+        self.a_rev = self._act("🧾  " + ("تقرير المحكّمين الإحصائي…" if A else "Statistical report for reviewers…"), self.reviewer_report)
+        self.a_panel = self._act("🧩  " + ("لوحة رسوم متعددة (A, B, C)…" if A else "Multi-panel figure (A, B, C)…"), self.panel_builder)
+        self.a_animal = self._act("🐀  " + ("أدوات دراسات الحيوان (عشوائية، حجم عينة، شواذ، ARRIVE)…" if A
+                                         else "Animal-study toolkit (randomise, sample size, outliers, ARRIVE)…"), self.animal_toolkit)
+        self.a_tmpl = self._act("🧪  " + ("قوالب دراسات الأدوية والسموم…" if A else "Pharmacology / toxicology study templates…"), self.study_templates)
 
     def _build_menus(self):
         mb = self.menuBar()
         m = mb.addMenu(tr("file"))
         for a in (self.a_new, self.a_open, self.a_paste, self.a_save):
+            m.addAction(a)
+        m.addSeparator()
+        for a in (self.a_popen, self.a_psave, self.a_rerun):
             m.addAction(a)
         sm = m.addMenu("🧪  " + tr("samples"))
         for name in make_sample_datasets():
@@ -162,6 +177,12 @@ class MainWindow(QMainWindow):
             o.addAction(x)
         o.addAction(self._act("🎨  " + tr("restyle"), self.restyle_all))
         o.addAction(self._act("🖼  " + tr("export_all_figs"), self.export_all_figs))
+        p = mb.addMenu("📰  " + ("النشر" if SETTINGS.language == "ar" else "Publish"))
+        for x in (self.a_journal, self.a_ms, self.a_rev, self.a_panel):
+            p.addAction(x)
+        t = mb.addMenu("🧰  " + ("أدوات" if SETTINGS.language == "ar" else "Tools"))
+        for x in (self.a_tmpl, self.a_animal):
+            t.addAction(x)
         v = mb.addMenu(tr("view"))
         v.addAction(self.a_settings); v.addAction(self.a_lang)
         h = mb.addMenu(tr("help"))
@@ -172,7 +193,7 @@ class MainWindow(QMainWindow):
         tb = QToolBar("main"); tb.setMovable(False); tb.setIconSize(QSize(18, 18))
         tb.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.addToolBar(tb)
-        for a in (self.a_open, self.a_paste, self.a_save):
+        for a in (self.a_open, self.a_paste, self.a_save, self.a_psave):
             tb.addAction(a)
         tb.addSeparator()
         tb.addAction(self.a_smart)
@@ -180,7 +201,7 @@ class MainWindow(QMainWindow):
         tb.addAction(self.a_wizard)
         tb.addAction(self.a_recs)
         tb.addSeparator()
-        for a in (self.a_word, self.a_excel, self.a_settings, self.a_lang):
+        for a in (self.a_word, self.a_ms, self.a_excel, self.a_settings, self.a_lang):
             tb.addAction(a)
 
     def _build_sidebar(self):
@@ -345,6 +366,8 @@ class MainWindow(QMainWindow):
             return
         A = SETTINGS.language == "ar"
         ext = os.path.splitext(path)[1].lower()
+        if ext == ".msx":
+            self.open_project(path); return
         try:
             QApplication.setOverrideCursor(Qt.WaitCursor)
             if ext in (".xlsx", ".xlsm", ".xls"):
@@ -821,25 +844,131 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentIndex(3)
 
     def restyle_all(self):
+        self.rerun_entries(use_current_df=False)
+
+    @staticmethod
+    def _captions(res):
+        return [b.caption for b in res.blocks if b.kind in ("table", "figure")]
+
+    def rerun_entries(self, use_current_df=False):
+        """Re-run every analysis (on its own data, or on the current data after it changed), keeping the user's figure
+        edits and edited captions. Returns a list of (title, error) for analyses that could not be re-run."""
+        from ..plots.groupfig import render, caption_for
+        from ..core.project import restyle
+        errors = []
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             for e in self.entries:
                 if e["aid"] == "__histo__":
                     continue
-                if e["aid"] == "__smart__":
-                    e["result"], _ = auto_analyze(e["df"], e["kwargs"]["outcome"], e["kwargs"]["factor"])
-                else:
-                    e["result"] = run(e["aid"], e["df"], **e["kwargs"])
-                if e.get("edited"):
-                    from ..plots.groupfig import render, caption_for
-                    figs = e["result"].figures
-                    for fi, spec in e["edited"].items():
-                        if fi < len(figs):
-                            figs[fi].content = render(spec); figs[fi].caption = caption_for(spec)
+                old_caps = self._captions(e["result"]) if e.get("result") is not None else e.get("captions", [])
+                if use_current_df:
+                    e["df"] = self.df.copy()
+                try:
+                    if e["aid"] == "__smart__":
+                        e["result"], _ = auto_analyze(e["df"], e["kwargs"]["outcome"], e["kwargs"]["factor"])
+                    else:
+                        e["result"] = run(e["aid"], e["df"], **e["kwargs"])
+                except Exception as ex:
+                    errors.append((e.get("title") or e["aid"], ex)); continue
+                figs = e["result"].figures
+                for fi, spec in list((e.get("edited") or {}).items()):
+                    if fi < len(figs):
+                        new_spec = getattr(figs[fi].content, "_mx_spec", None)
+                        spec2 = restyle(new_spec, spec) if (use_current_df and new_spec is not None) else spec
+                        e["edited"][fi] = spec2
+                        figs[fi].content = render(spec2); figs[fi].caption = spec2.caption or caption_for(spec2)
+                caps = e.pop("captions", None) or old_caps
+                blocks = [b for b in e["result"].blocks if b.kind in ("table", "figure")]
+                if caps and len(caps) == len(blocks):
+                    for b, c in zip(blocks, caps):
+                        b.caption = c
             self.png_cache.clear()
             self.refresh_output(); self.refresh_fig_list()
         finally:
             QApplication.restoreOverrideCursor()
+        return errors
+
+    # ------------------------------------------------------------------ project files
+    def _project_state(self):
+        st = {"dataset_name": self.dataset_name, "df": self.df, "entries": [], "settings": SETTINGS.as_dict()}
+        for e in self.entries:
+            item = {"aid": e["aid"], "kwargs": e["kwargs"], "df": e.get("df"), "edited": e.get("edited") or {},
+                    "title": e["result"].title, "captions": self._captions(e["result"])}
+            if e["aid"] == "__histo__":
+                item["html"] = e["result"].to_html(embed_figures=True)
+            st["entries"].append(item)
+        h = self.histo
+        if h.original is not None:
+            st["histology"] = {"original": h.original, "name": h.name, "px": h.px.value(),
+                               "steps": [{"op": s_["op"], "params": s_["params"]} for s_ in h.steps_done],
+                               "quant": {k: v for k, v in (h.last_quant or {}).items() if not isinstance(v, str)}}
+        return st
+
+    def save_project(self):
+        from ..core.project import save_project
+        A = SETTINGS.language == "ar"
+        path, _ = QFileDialog.getSaveFileName(self, "حفظ المشروع" if A else "Save project",
+                                              getattr(self, "project_path", "") or "MedStatix_project.msx",
+                                              "MedStatix project (*.msx)")
+        if not path:
+            return
+        if not path.lower().endswith(".msx"):
+            path += ".msx"
+        try:
+            save_project(path, self._project_state())
+        except Exception as e:
+            self.show_error(e); return
+        self.project_path = path
+        self.statusBar().showMessage(("تم حفظ المشروع: " if A else "Project saved: ") + path, 6000)
+
+    def open_project(self, path=None):
+        from ..core.project import load_project
+        from ..core.result import Result, Block
+        A = SETTINGS.language == "ar"
+        if not path:
+            path, _ = QFileDialog.getOpenFileName(self, "فتح مشروع" if A else "Open project", "", "MedStatix project (*.msx)")
+        if not path:
+            return
+        try:
+            st = load_project(path)
+        except Exception as e:
+            self.show_error(e); return
+        if st["df"] is not None:
+            self.load_df(st["df"], st["dataset_name"] or os.path.basename(path))
+        self.entries = []
+        for e in st["entries"]:
+            if e["aid"] == "__histo__":
+                r = Result(e.get("title") or "Histology image report"); r.blocks.append(Block("html", e.get("html") or ""))
+                self.entries.append({"result": r, "aid": "__histo__", "kwargs": {}, "df": None})
+            else:
+                self.entries.append({"result": None, "aid": e["aid"], "kwargs": e["kwargs"], "df": e["df"] if e["df"] is not None else self.df.copy(),
+                                     "edited": e["edited"], "captions": e["captions"], "title": e.get("title", "")})
+        errors = self.rerun_entries(use_current_df=False)
+        self.entries = [e for e in self.entries if e.get("result") is not None]
+        h = st.get("histology")
+        if h:
+            self.histo.load(h["original"], h["name"]); self.histo.px.setValue(float(h.get("px") or 0))
+            if h.get("steps"):
+                self.histo.set_controls(h["steps"]); self.histo.apply_enhance()
+        self.project_path = path
+        self.refresh_output(); self.refresh_fig_list()
+        self.tabs.setCurrentIndex(2 if self.entries else 0)
+        if errors:
+            QMessageBox.warning(self, APP_NAME, "\n".join(f"• {t}: {friendly(x)[0]}" for t, x in errors))
+        self.statusBar().showMessage(("تم فتح المشروع: " if A else "Project opened: ") + path, 6000)
+
+    def rerun_all_current(self):
+        A = SETTINGS.language == "ar"
+        if not self.entries:
+            return
+        if QMessageBox.question(self, APP_NAME, "إعادة تشغيل كل التحليلات على البيانات الحالية؟ ستُحفظ تعديلات الرسوم والتعليقات."
+                                if A else "Re-run every analysis on the current data? Figure edits and captions are kept.") != QMessageBox.Yes:
+            return
+        errors = self.rerun_entries(use_current_df=True)
+        if errors:
+            QMessageBox.warning(self, APP_NAME, "\n".join(f"• {t}: {friendly(x)[0]}" for t, x in errors))
+        self.tabs.setCurrentIndex(2)
 
     FIG_FILTER = "TIFF 600 dpi (*.tiff);;PNG (*.png);;SVG vector (*.svg);;PDF vector (*.pdf);;EPS (*.eps)"
 
@@ -886,6 +1015,111 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"{len(figs)} → {folder}", 6000)
 
     # ------------------------------------------------------------------ export
+    # ------------------------------------------------------------------ publishing & tools (v1.3)
+    def _A(self, en, ar):
+        return ar if SETTINGS.language == "ar" else en
+
+    def choose_journal(self):
+        from .publish import JournalDialog
+        dlg = JournalDialog(self)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        k = dlg.apply(); self._save_settings()
+        if k and self.entries and QMessageBox.question(
+                self, "", self._A("Redraw the existing figures with the journal's size and font?",
+                                  "إعادة رسم الرسوم الحالية بمقاس وخط المجلة؟")) == QMessageBox.Yes:
+            self.restyle_all()
+        self.statusBar().showMessage(self._A("Journal preset: ", "المجلة: ") + (k or "—"), 6000)
+
+    def _histo_methods(self):
+        h = getattr(self, "histo", None)
+        if h is None or not getattr(h, "steps_done", None):
+            return ""
+        from ..imaging import core as IC
+        try:
+            return IC.EditLog(h.name, h.steps_done).methods_text()
+        except Exception:
+            return ""
+
+    def build_manuscript(self):
+        if not self.entries:
+            QMessageBox.information(self, "", self._A("Run some analyses first.", "قم بإجراء بعض التحليلات أولًا.")); return
+        from .publish import ManuscriptDialog
+        from ..report.manuscript import build_manuscript
+        hm = self._histo_methods()
+        dlg = ManuscriptDialog(self, has_histo=bool(hm))
+        if dlg.exec() != QDialog.Accepted:
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "", "Manuscript_sections.docx", "Word (*.docx)")
+        if not path:
+            return
+        if not path.lower().endswith(".docx"):
+            path += ".docx"
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            build_manuscript([e["result"] for e in self.entries], path, journal=dlg.j.currentData() or "",
+                             width_key=dlg.w.currentData() or "single", lang=dlg.lang.currentData(),
+                             tables_inline=dlg.inline.isChecked(), histology_methods=hm if dlg.histo.isChecked() else "",
+                             main_tables_only=dlg.aux.isChecked())
+            self.statusBar().showMessage(path, 8000)
+            QMessageBox.information(self, "", self._A("Saved:", "تم الحفظ:") + "\n" + path)
+        except Exception as e:
+            QMessageBox.critical(self, tr("error"), str(e))
+        finally:
+            QApplication.restoreOverrideCursor()
+
+    def reviewer_report(self):
+        if not self.entries:
+            QMessageBox.information(self, "", self._A("Run some analyses first.", "قم بإجراء بعض التحليلات أولًا.")); return
+        from ..report.manuscript import build_reviewer_report
+        path, _ = QFileDialog.getSaveFileName(self, "", "Statistical_report_for_reviewers.docx", "Word (*.docx)")
+        if not path:
+            return
+        if not path.lower().endswith(".docx"):
+            path += ".docx"
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            build_reviewer_report([e["result"] for e in self.entries], path)
+            self.statusBar().showMessage(path, 8000)
+            QMessageBox.information(self, "", self._A("Saved:", "تم الحفظ:") + "\n" + path)
+        except Exception as e:
+            QMessageBox.critical(self, tr("error"), str(e))
+        finally:
+            QApplication.restoreOverrideCursor()
+
+    def _all_figures(self):
+        out = []
+        for ei, e in enumerate(self.entries):
+            for fi, b in enumerate([b for b in e["result"].blocks if b.kind == "figure"]):
+                out.append((f"{ei + 1}.{fi + 1} {e['result'].title[:40]}", b.content))
+        return out
+
+    def panel_builder(self):
+        from .publish import PanelBuilder
+        def histo():
+            h = getattr(self, "histo", None)
+            if h is None or getattr(h, "original", None) is None:
+                return None
+            return h.view.render_image(True)
+        PanelBuilder(self, self._all_figures(), histo).exec()
+
+    def animal_toolkit(self):
+        from .toolkit import AnimalToolkit
+        dlg = AnimalToolkit(self, self.df if not self.df.empty else None)
+        dlg.exec()
+        if dlg.excluded is not None:
+            self.load_df(dlg.excluded, (self.dataset_name or "data") + self._A(" (outliers excluded)", " (بعد استبعاد الشواذ)"))
+            self.statusBar().showMessage(" ".join(dlg.log), 10000)
+
+    def study_templates(self):
+        from .toolkit import TemplatesDialog
+        dlg = TemplatesDialog(self)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        df, name = dlg.make()
+        self.load_df(df, name)
+        self.tabs.setCurrentIndex(0)
+
     def export(self, kind):
         if not self.entries:
             return
@@ -897,6 +1131,15 @@ class MainWindow(QMainWindow):
         try:
             results = [e["result"] for e in self.entries]
             if kind == "docx":
+                A = SETTINGS.language == "ar"
+                opts = [("same", "نفس لغة البرنامج" if A else "Same as the interface"), ("en", "English"),
+                        ("ar", "العربية"), ("both", "الاثنان (إنجليزي + عربي) — للرسائل العلمية" if A else "Both (English + Arabic) — for theses")]
+                QApplication.restoreOverrideCursor()
+                it, ok = QInputDialog.getItem(self, "Word", "لغة التفسير في الملف:" if A else "Interpretation language in the file:",
+                                              [o[1] for o in opts], [o[0] for o in opts].index(getattr(SETTINGS, "interp_lang", "same")), False)
+                QApplication.setOverrideCursor(Qt.WaitCursor)
+                if ok:
+                    SETTINGS.interp_lang = opts[[o[1] for o in opts].index(it)][0]; self._save_settings()
                 results_to_docx(results, path)
             elif kind == "xlsx":
                 results_to_xlsx(results, path)
