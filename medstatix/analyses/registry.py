@@ -73,5 +73,7 @@ P_ADJ = ["Holm", "Bonferroni", "Benjamini-Hochberg (FDR)", "Šidák", "None"]
 def run(analysis_id: str, df, **kwargs):
     a = REGISTRY[analysis_id]
     if a.needs_data:
+        from ..core.errors import validate
+        validate(a, df, kwargs)
         return a.func(df, **kwargs)
     return a.func(**kwargs)

@@ -57,9 +57,9 @@ def chisq(df, row, col):
     fisher_p = np.nan
     try:
         if obs.shape == (2, 2):
-            fisher_p = stats.fisher_exact(obs).pvalue
+            fisher_p = float(np.asarray(stats.fisher_exact(obs).pvalue))
         elif obs.sum() <= 300:
-            fisher_p = stats.fisher_exact(obs).pvalue
+            fisher_p = float(np.asarray(stats.fisher_exact(obs).pvalue))
         tests.append({"Test": "Fisher's exact test", "Value": np.nan, "df": np.nan, "p": fisher_p})
     except Exception:
         pass

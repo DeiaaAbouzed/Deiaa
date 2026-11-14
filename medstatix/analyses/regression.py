@@ -238,7 +238,18 @@ def ordinal(df, outcome, predictors):
     y = d[outcome]
     levels = sorted(y.unique())
     yc = pd.Categorical(y, categories=levels, ordered=True)
-    X = d[list(predictors)].apply(pd.to_numeric, errors="coerce")
+    X = d[list(predictors)].apply(pd.to_numeric, errors="coerce").astype(float)
+    bad = [c for c in X.columns if X[c].notna().sum() == 0]
+    if bad:
+        raise AnalysisError(f"Predictor(s) {', '.join(bad)} are not numeric. Use numeric predictors (code categories as 0/1).")
+    keep = X.notna().all(1)
+    X, yc = X[keep], pd.Categorical(y[keep], categories=levels, ordered=True)
+    if len(levels) > 15:
+        raise AnalysisError(f"'{outcome}' has {len(levels)} different values; an ordinal outcome should have a few ordered categories (e.g. score 0-4).",
+                            f"المتغير «{outcome}» به {len(levels)} قيمة مختلفة؛ الانحدار الترتيبي يحتاج فئات مرتبة قليلة (مثل درجة 0-4).")
+    yc = pd.Series(yc, index=X.index)
+    if len(levels) < 3:
+        raise AnalysisError(f"'{outcome}' has {len(levels)} categories; ordinal regression needs ≥ 3 ordered categories (use logistic regression for 2).")
     m = OrderedModel(yc, X, distr="logit").fit(method="bfgs", disp=0)
     ci = m.conf_int()
     rows = []

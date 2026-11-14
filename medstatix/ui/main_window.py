@@ -23,7 +23,9 @@ from ..core.settings import SETTINGS
 from ..report.export import results_to_docx, results_to_xlsx, results_to_html, export_figure
 from .i18n import tr, lbl
 from .theme import stylesheet, output_css
-from .widgets import (AboutDialog, AnalysisDialog, FormDialog, PandasModel, SettingsDialog, SmartDialog, VarList,
+from ..core.errors import friendly
+from ..core import smartimport as SI
+from .widgets import (AboutDialog, AnalysisDialog, FormDialog, ImportAssistant, PandasModel, SettingsDialog, SmartDialog, VarList,
                       WizardDialog, combo, variables_frame)
 
 ICON_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources")
@@ -320,11 +322,71 @@ class MainWindow(QMainWindow):
             path, _ = QFileDialog.getOpenFileName(self, tr("open"), "", IMPORT_FILTER)
         if not path:
             return
+        A = SETTINGS.language == "ar"
+        ext = os.path.splitext(path)[1].lower()
         try:
-            df, _ = load_file(path)
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            if ext in (".xlsx", ".xlsm", ".xls"):
+                sheets = SI.sheet_names(path)
+                sheet = sheets[0] if sheets else 0
+                if len(sheets) > 1:
+                    QApplication.restoreOverrideCursor()
+                    sizes = {}
+                    for sh in sheets:
+                        try:
+                            sizes[sh] = int(pd.read_excel(path, sheet_name=sh, header=None).notna().to_numpy().sum())
+                        except Exception:
+                            sizes[sh] = 0
+                    best = max(sheets, key=lambda x: sizes[x])
+                    items = [f"{sh}   ({sizes[sh]} " + ("خلية" if A else "cells") + ")" for sh in sheets]
+                    it, ok = QInputDialog.getItem(self, "Excel", "اختر ورقة البيانات (Sheet):" if A else "Choose the data sheet:",
+                                                  items, sheets.index(best), False)
+                    if not ok:
+                        return
+                    sheet = sheets[items.index(it)]
+                    QApplication.setOverrideCursor(Qt.WaitCursor)
+                df, report = SI.smart_read_excel(path, sheet)
+            elif ext in (".csv", ".txt", ".tsv"):
+                df, report = SI.smart_read_csv(path)
+            else:
+                df, _ = load_file(path)
+                report = []
+            QApplication.restoreOverrideCursor()
+            if df.empty:
+                raise AnalysisError("No data table was found in this file.", "لم يتم العثور على جدول بيانات في هذا الملف.")
             self.load_df(df, os.path.basename(path))
+            self.import_assistant(report)
         except Exception as e:
-            QMessageBox.critical(self, tr("error"), str(e))
+            QApplication.restoreOverrideCursor()
+            self.show_error(e)
+
+    def show_error(self, e):
+        msg, details = friendly(e)
+        box = QMessageBox(QMessageBox.Warning, tr("error"), msg, parent=self)
+        box.setDetailedText(details)
+        box.exec()
+
+    def import_assistant(self, report):
+        dlg = ImportAssistant(self.df, report, self.dataset_name, self)
+        dlg.exec()
+        c = dlg.choice
+        if not c:
+            return
+        if c[0] == "to_groups":
+            title = self.df.attrs.get("title") or "Value"
+            self.load_df(SI.columns_to_groups(self.df, value_name=title), self.dataset_name)
+            self.import_assistant([{"en": "Columns were converted to a Group / Value table.",
+                                    "ar": "تم تحويل الأعمدة إلى جدول (المجموعة / القيمة).", "level": "info"}])
+        elif c[0] == "smart_all":
+            self.run_smart(c[2], c[1])
+        elif c[0] == "describe":
+            self.execute("descriptives", {"variables": c[2], "group": c[1]} if c[1] else {"variables": c[2]})
+        elif c[0] == "corr":
+            self.execute("correlation", {"variables": c[1]})
+        elif c[0] == "repeated":
+            aid = "ttest_paired" if len(c[1]) == 2 else "rmanova"
+            preset = {"var1": c[1][0], "var2": c[1][1]} if aid == "ttest_paired" else {"measures": c[1]}
+            self.open_analysis(aid, preset)
 
     def save_file(self):
         path, _ = QFileDialog.getSaveFileName(self, tr("save"), self.dataset_name.rsplit(".", 1)[0] or "data",
@@ -344,10 +406,12 @@ class MainWindow(QMainWindow):
         if not text.strip():
             return
         try:
-            df = pd.read_csv(io.StringIO(text), sep="\t" if "\t" in text else None, engine="python")
+            grid = pd.read_csv(io.StringIO(text), sep="\t" if "\t" in text else None, engine="python", header=None, dtype=object)
+            df, report = SI.tidy_grid(grid)
             self.load_df(df, "Pasted data")
+            self.import_assistant(report)
         except Exception as e:
-            QMessageBox.critical(self, tr("error"), str(e))
+            self.show_error(e)
 
     def dragEnterEvent(self, e):
         if e.mimeData().hasUrls():
@@ -481,12 +545,9 @@ class MainWindow(QMainWindow):
             res = run(aid, df, **kw)
             self.entries.append({"result": res, "aid": aid, "kwargs": kw, "df": df})
             self.after_result()
-        except AnalysisError as e:
-            QApplication.restoreOverrideCursor()
-            QMessageBox.warning(self, tr("error"), str(e)); return
         except Exception as e:
             QApplication.restoreOverrideCursor()
-            QMessageBox.critical(self, tr("error"), f"{type(e).__name__}: {e}\n\n{traceback.format_exc(limit=3)}"); return
+            self.show_error(e); return
         QApplication.restoreOverrideCursor()
 
     def after_result(self):
@@ -501,15 +562,27 @@ class MainWindow(QMainWindow):
         dlg = SmartDialog(self.df, self)
         if dlg.exec():
             o, f = dlg.values()
-            QApplication.setOverrideCursor(Qt.WaitCursor)
+            self.run_smart(dlg.outcomes(), f)
+
+    def run_smart(self, outcomes, factor):
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        errors, done = [], 0
+        for o in outcomes:
             try:
-                res, aid = auto_analyze(self.df.copy(), o, f)
-                self.entries.append({"result": res, "aid": "__smart__", "kwargs": {"outcome": o, "factor": f}, "df": self.df.copy()})
-                QApplication.restoreOverrideCursor()
-                self.after_result()
+                res, aid = auto_analyze(self.df.copy(), o, factor)
+                self.entries.append({"result": res, "aid": "__smart__", "kwargs": {"outcome": o, "factor": factor}, "df": self.df.copy()})
+                done += 1
             except Exception as e:
-                QApplication.restoreOverrideCursor()
-                QMessageBox.warning(self, tr("error"), str(e))
+                errors.append((o, e))
+        QApplication.restoreOverrideCursor()
+        if done:
+            self.after_result()
+        if errors:
+            if len(errors) == 1 and not done:
+                self.show_error(errors[0][1])
+            else:
+                msg = "\n".join(f"• {o}: {friendly(e)[0]}" for o, e in errors)
+                QMessageBox.warning(self, tr("error"), msg)
 
     def wizard(self):
         dlg = WizardDialog(self)

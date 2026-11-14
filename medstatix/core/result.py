@@ -233,4 +233,11 @@ def fig_to_png_bytes(fig, dpi=150) -> bytes:
 
 
 class AnalysisError(Exception):
-    """Raised for user-facing problems (wrong variable type, too few cases...)."""
+    """Raised for user-facing problems (wrong variable type, too few cases...).
+
+    An optional Arabic text can be given; the UI shows the one matching the interface language."""
+
+    def __init__(self, en, ar=None):
+        super().__init__(en)
+        self.en = en
+        self.ar = ar

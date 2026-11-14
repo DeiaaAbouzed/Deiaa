@@ -136,6 +136,13 @@ class AnalysisDialog(QDialog):
         num_cols = [c for c in cols if is_numeric(df[c])] if df is not None else []
         cat_cols = [c for c in cols if df[c].nunique() <= 30] if df is not None else []
         used = set()
+        if df is not None and len(df):
+            from ..core.smartimport import guess_roles
+            roles = guess_roles(df)
+            ids = set(roles["id"])
+            num_cols = [c for c in roles["measure"] + num_cols if c not in ids]
+            num_cols = list(dict.fromkeys(num_cols)) + [c for c in cols if is_numeric(df[c]) and c in ids]
+            cat_cols = list(dict.fromkeys(roles["group"] + [c for c in cat_cols if c not in ids]))
         for p in self.a.params:
             label = p.ar if SETTINGS.language == "ar" else p.en
             if p.kind in ("var_num", "var_cat", "var_any"):
@@ -221,13 +228,29 @@ class SmartDialog(QDialog):
         h = QLabel("🧠 " + tr("smart")); h.setObjectName("h1"); lay.addWidget(h)
         d = QLabel(tr("smart_desc")); d.setWordWrap(True); d.setObjectName("hint"); lay.addWidget(d)
         f = QFormLayout()
+        from ..core.smartimport import guess_roles
+        A = SETTINGS.language == "ar"
+        kind_ar = {"continuous": "كمي", "categorical": "فئوي", "binary": "ثنائي"}
+        roles = guess_roles(df)
+        self.roles = roles
         self.out = QComboBox(); self.fac = QComboBox()
         self.fac.addItem(tr("none"), None)
-        for c in df.columns:
-            self.out.addItem(f"{c}   [{var_kind(df[c])}]", c)
-            self.fac.addItem(f"{c}   [{var_kind(df[c])}]", c)
+        ordered_out = roles["measure"] + [c for c in df.columns if c not in roles["measure"]]
+        ordered_fac = roles["group"] + [c for c in df.columns if c not in roles["group"]]
+        for c in ordered_out:
+            k = var_kind(df[c]); k = kind_ar[k] if A else k
+            self.out.addItem(f"{c}   [{k}]" + ("  ⚠ ID" if c in roles["id"] else ""), c)
+        for c in ordered_fac:
+            k = var_kind(df[c]); k = kind_ar[k] if A else k
+            self.fac.addItem(f"{c}   [{k}]" + ("  ⚠ ID" if c in roles["id"] else ""), c)
+        if roles["group"]:
+            self.fac.setCurrentIndex(1)
         f.addRow(tr("outcome_q"), self.out); f.addRow(tr("factor_q"), self.fac)
         lay.addLayout(f)
+        self.all_box = QCheckBox(("حلّل كل القياسات الرقمية بنفس المجموعة" if A else "Analyse every numeric measurement with the same group")
+                                 + f" ({len(roles['measure'])})")
+        self.all_box.setVisible(len(roles["measure"]) > 1)
+        lay.addWidget(self.all_box)
         bb = QDialogButtonBox()
         b = bb.addButton(tr("run"), QDialogButtonBox.AcceptRole); b.setObjectName("primary")
         bb.addButton(tr("cancel"), QDialogButtonBox.RejectRole)
@@ -237,6 +260,9 @@ class SmartDialog(QDialog):
 
     def values(self):
         return self.out.currentData(), self.fac.currentData()
+
+    def outcomes(self):
+        return self.roles["measure"] if self.all_box.isChecked() else [self.out.currentData()]
 
 
 class WizardDialog(QDialog):
@@ -388,3 +414,82 @@ class AboutDialog(QDialog):
         bb = QDialogButtonBox(QDialogButtonBox.Ok); bb.accepted.connect(self.accept)
         lay.addWidget(bb)
         self.resize(720, 560)
+
+
+# --------------------------------------------------------------------------- import assistant
+class ImportAssistant(QDialog):
+    """Shown after a file is opened: what was fixed, how each column was understood, and one-click analyses."""
+
+    def __init__(self, df, report, name, parent=None):
+        super().__init__(parent)
+        from ..core.smartimport import guess_roles, column_groups_candidate
+        A = SETTINGS.language == "ar"
+        t = (lambda en, ar: ar if A else en)
+        self.choice = None
+        self.setWindowTitle(t("Import assistant", "مساعد الاستيراد"))
+        self.setMinimumWidth(720)
+        lay = QVBoxLayout(self)
+        h = QLabel("✅ " + t(f"{name}: {len(df)} rows × {df.shape[1]} variables", f"{name}: {len(df)} صف × {df.shape[1]} متغير"))
+        h.setObjectName("h1"); h.setWordWrap(True); lay.addWidget(h)
+        roles = guess_roles(df)
+        self.roles = roles
+        html = ""
+        if report:
+            html += "<h3>" + t("What was fixed automatically", "ما تم إصلاحه تلقائيًا") + "</h3><ul>"
+            for r in report:
+                col = "#B9770E" if r["level"] == "warn" else "#1E8449"
+                html += f"<li style='color:{col}'>{r['ar'] if A else r['en']}</li>"
+            html += "</ul>"
+        role_name = {"id": t("ID (not analysed)", "رقم حالة (لا يُحلَّل)"), "group": t("Group / factor", "مجموعة / عامل"),
+                     "measure": t("Numeric measurement", "قياس رقمي"), "binary": t("Two categories", "فئتان (ثنائي)")}
+        html += "<h3>" + t("How your columns were understood", "كيف فهم البرنامج أعمدتك") + "</h3><table cellpadding='4' border='0'>"
+        for c in df.columns:
+            r = ("binary" if c in roles["binary"] and c not in roles["group"][:1] else
+                 next((k for k in ("id", "group", "measure") if c in roles[k]), None))
+            label = role_name.get(r, t("Text / other", "نص / أخرى"))
+            k = df[c].nunique()
+            extra = (t(f"{k} groups", f"{k} مجموعات") if r in ("group", "binary") else
+                     t(f"n = {df[c].notna().sum()}", f"العدد = {df[c].notna().sum()}") if r == "measure" else "")
+            html += f"<tr><td><b>{c}</b></td><td>{label}</td><td style='color:#5B6B82'>{extra}</td></tr>"
+        html += "</table>"
+        self.wide = column_groups_candidate(df) and not roles["group"]
+        if self.wide:
+            html += ("<h3 style='color:#B9770E'>" + t("Each column looks like a separate group", "يبدو أن كل عمود مجموعة مستقلة") + "</h3><p>" +
+                     t("If the columns are different groups of animals/patients (e.g. Control, Drug A, Drug B), convert them so the "
+                       "program can compare groups. If the same subjects were measured several times (before/after, days), keep them.",
+                       "إذا كانت الأعمدة مجموعات مختلفة من الحيوانات أو المرضى (مثل ضابطة، دواء أ، دواء ب) فحوّلها ليتمكن البرنامج من مقارنة المجموعات. "
+                       "أما إذا كانت قياسات متكررة لنفس الحالات (قبل/بعد، أيام) فاتركها كما هي.") + "</p>")
+        tb = QTextBrowser(); tb.setHtml(html); tb.setMinimumHeight(300)
+        lay.addWidget(tb, 1)
+        sub = QLabel("<b>" + t("Suggested next step (one click):", "الخطوة المقترحة (بضغطة واحدة):") + "</b>"); lay.addWidget(sub)
+        btns = QVBoxLayout()
+
+        def add(text, choice, primary=False):
+            b = QPushButton(text)
+            if primary:
+                b.setObjectName("primary")
+            b.clicked.connect(lambda: self._pick(choice))
+            btns.addWidget(b)
+
+        g, m = roles["group"], roles["measure"]
+        if self.wide:
+            add(t("Convert: each column is a group  →  then compare groups", "تحويل: كل عمود مجموعة ← ثم مقارنة المجموعات"), ("to_groups",), True)
+            add(t("Keep: same subjects measured repeatedly (paired / repeated measures)",
+                  "إبقاء: نفس الحالات قيست أكثر من مرة (اختبار مزدوج / قياسات متكررة)"), ("repeated", list(df.columns)))
+        elif g and m:
+            add(t(f"Compare all {len(m)} measurement(s) between the groups of '{g[0]}' (Smart analysis)",
+                  f"مقارنة كل القياسات ({len(m)}) بين مجموعات «{g[0]}» (تحليل ذكي)"), ("smart_all", g[0], m), True)
+            add(t(f"Descriptive table (mean ± SD) by '{g[0]}'", f"جدول وصفي (المتوسط ± الانحراف) حسب «{g[0]}»"), ("describe", g[0], m))
+            if len(m) >= 2:
+                add(t("Correlation between the measurements", "الارتباط بين القياسات"), ("corr", m))
+        elif m:
+            add(t("Descriptive statistics and normality", "إحصاء وصفي واختبار التوزيع الطبيعي"), ("describe", None, m), True)
+            if len(m) >= 2:
+                add(t("Correlation between the measurements", "الارتباط بين القياسات"), ("corr", m))
+        add(t("Close and choose the analysis myself", "إغلاق واختيار التحليل بنفسي"), None)
+        lay.addLayout(btns)
+        self.resize(760, 640)
+
+    def _pick(self, choice):
+        self.choice = choice
+        self.accept()

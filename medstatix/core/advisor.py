@@ -27,6 +27,8 @@ def _normal(x):
 def auto_analyze(df: pd.DataFrame, outcome: str, factor: str | None = None):
     from ..analyses.registry import run
     en, ar = [], []
+    from .errors import validate_smart
+    validate_smart(df, outcome, factor)
     ok = var_kind(df[outcome])
     en.append(f"Outcome '{outcome}' detected as {ok}.")
     ar.append(f"تم التعرف على المتغير التابع '{outcome}' كمتغير {({'continuous': 'كمي متصل', 'binary': 'ثنائي', 'categorical': 'فئوي'})[ok]}.")
@@ -55,6 +57,13 @@ def auto_analyze(df: pd.DataFrame, outcome: str, factor: str | None = None):
             ar.append(f"{len(levels)} مجموعات مستقلة (أصغر عدد = {small}). اختبار شابيرو-ويلك: " +
                       "، ".join(f"{k} p = {fmt_p(v[1])}" for k, v in norms.items()) + ".")
             lev_p = stats.levene(*groups.values(), center="median")[1]
+            if len(levels) >= 3:
+                # ANOVA assumes normal residuals; testing the pooled residuals avoids the inflated false-alarm
+                # rate of running one Shapiro-Wilk test per group
+                resid = np.concatenate([v - v.mean() for v in groups.values()])
+                all_norm, p_res = _normal(resid)
+                en.append(f"Normality of the ANOVA residuals (pooled, n = {len(resid)}): Shapiro-Wilk p = {fmt_p(p_res)}.")
+                ar.append(f"التوزيع الطبيعي لبواقي تحليل التباين (مجمّعة، العدد = {len(resid)}): شابيرو-ويلك p = {fmt_p(p_res)}.")
             if len(levels) == 2:
                 if all_norm:
                     aid, kw = "ttest_ind", {"outcome": outcome, "group": factor}
