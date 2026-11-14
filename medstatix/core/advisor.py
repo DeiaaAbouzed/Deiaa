@@ -12,7 +12,7 @@ import pandas as pd
 from scipy import stats
 
 from .data import var_kind, numeric, _level_order
-from .result import Result, AnalysisError
+from .result import Result, AnalysisError, fmt_p
 
 
 def _normal(x):
@@ -51,9 +51,9 @@ def auto_analyze(df: pd.DataFrame, outcome: str, factor: str | None = None):
             all_norm = all(v[0] for v in norms.values())
             small = min(len(v) for v in groups.values())
             en.append(f"{len(levels)} independent groups (smallest n = {small}). Shapiro-Wilk: " +
-                      ", ".join(f"{k} p = {v[1]:.3f}" for k, v in norms.items()) + ".")
+                      ", ".join(f"{k} p = {fmt_p(v[1])}" for k, v in norms.items()) + ".")
             ar.append(f"{len(levels)} مجموعات مستقلة (أصغر عدد = {small}). اختبار شابيرو-ويلك: " +
-                      "، ".join(f"{k} p = {v[1]:.3f}" for k, v in norms.items()) + ".")
+                      "، ".join(f"{k} p = {fmt_p(v[1])}" for k, v in norms.items()) + ".")
             lev_p = stats.levene(*groups.values(), center="median")[1]
             if len(levels) == 2:
                 if all_norm:
@@ -68,8 +68,8 @@ def auto_analyze(df: pd.DataFrame, outcome: str, factor: str | None = None):
                 if all_norm:
                     ph = "Tukey HSD" if lev_p >= 0.05 else "Games-Howell"
                     aid, kw = "anova1", {"outcome": outcome, "group": factor, "posthoc": ph}
-                    en.append(f"Normal data, ≥ 3 groups → one-way ANOVA; Levene p = {lev_p:.3f} → {ph} post hoc.")
-                    ar.append(f"بيانات طبيعية و3 مجموعات أو أكثر ← تحليل التباين الأحادي؛ اختبار ليفين p = {lev_p:.3f} ← اختبار {ph} البعدي.")
+                    en.append(f"Normal data, ≥ 3 groups → one-way ANOVA; Levene p = {fmt_p(lev_p)} → {ph} post hoc.")
+                    ar.append(f"بيانات طبيعية و3 مجموعات أو أكثر ← تحليل التباين الأحادي؛ اختبار ليفين p = {fmt_p(lev_p)} ← اختبار {ph} البعدي.")
                 else:
                     aid, kw = "kruskal", {"outcome": outcome, "group": factor}
                     en.append("Normality violated, ≥ 3 groups → Kruskal-Wallis with Dunn's post hoc.")

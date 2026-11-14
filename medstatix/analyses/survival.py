@@ -54,6 +54,8 @@ def km(df, time, event, group=None, time_unit="Months", show_ci=True, risk_table
             lo = np.exp(-np.exp(ll + 1.96 * sell))
             hi = np.exp(-np.exp(ll - 1.96 * sell))
         lo[0], hi[0] = 1, 1
+        if sub.t.max() > t[-1]:  # extend the curve to the last (censored) follow-up time
+            t = np.append(t, sub.t.max()); s = np.append(s, s[-1]); lo = np.append(lo, lo[-1]); hi = np.append(hi, hi[-1])
         lo, hi = np.nan_to_num(lo, nan=1.0), np.nan_to_num(hi, nan=1.0)
         cens = sub[sub.e == 0].t.values
         cs = [s[np.searchsorted(t, c, side="right") - 1] for c in cens]

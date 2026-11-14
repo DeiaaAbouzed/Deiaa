@@ -162,17 +162,16 @@ class Result:
             elif b.kind == "note":
                 parts.append(f'<p class="note">{html.escape(b.content)}</p>')
             elif b.kind == "warning":
-                parts.append(f'<p class="warning">⚠ {html.escape(b.content)}</p>')
+                parts.append(_card(f"⚠ {html.escape(b.content)}", "#FFF4E5", "#E08E0B", "warning"))
             elif b.kind == "interpret":
                 from .settings import SETTINGS
                 lang = SETTINGS.language
                 txt = b.content.get(lang) or b.content.get("en")
                 d = ' dir="rtl"' if lang == "ar" else ""
                 head = "🧠 التفسير الذكي" if lang == "ar" else "🧠 Smart interpretation"
-                parts.append(f'<div class="interpret"{d}><b>{head}:</b><br>{html.escape(txt).replace(chr(10), "<br>")}</div>')
+                parts.append(_card(f'<b>{head}:</b><br>{html.escape(txt).replace(chr(10), "<br>")}', "#EEF6FF", "#1F6FEB", "interpret", d))
             elif b.kind == "methods":
-                parts.append('<div class="methods"><b>Methods / Results text (ready to paste):</b><br>'
-                             f"{html.escape(b.content)}</div>")
+                parts.append(_card(f"<b>Methods / Results text (ready to paste):</b><br>{html.escape(b.content)}", "#F3FAF3", "#2E8B57", "methods"))
             elif b.kind == "table":
                 tcount += 1
                 df = self.format_df(b.content, b.p_columns)
@@ -190,6 +189,12 @@ class Result:
                 parts.append(f'<div class="figure"><img src="{src}" width="560"><div class="caption">{html.escape(cap)}</div></div>')
         parts.append("</div>")
         return "\n".join(parts)
+
+
+def _card(inner, bg, edge, cls, attrs=""):
+    # table-based card renders identically in Qt's rich-text engine and in browsers
+    return (f'<table class="{cls}" width="100%" cellspacing="0" cellpadding="0" style="margin:8px 0"{attrs}><tr>'
+            f'<td width="5" bgcolor="{edge}"></td><td bgcolor="{bg}" style="padding:8px 12px;color:#1D2433">{inner}</td></tr></table>')
 
 
 def _df_to_html(df: pd.DataFrame, caption: str, note: str) -> str:

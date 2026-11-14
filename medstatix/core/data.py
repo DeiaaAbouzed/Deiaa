@@ -146,7 +146,7 @@ def make_sample_datasets() -> dict:
     eff = np.where(grp == "Drug A", -12, -3)
     sbp4 = (base + eff + rng.normal(0, 9, n)).round(1)
     sbp8 = (sbp4 + np.where(grp == "Drug A", -5, -1) + rng.normal(0, 6, n)).round(1)
-    lin = -6 + 0.06 * age + 0.03 * (base - 150) + np.where(grp == "Drug A", -0.9, 0)
+    lin = -4.6 + 0.06 * age + 0.03 * (base - 150) + np.where(grp == "Drug A", -0.9, 0)
     event = (rng.uniform(size=n) < 1 / (1 + np.exp(-lin))).astype(int)
     crp = np.exp(rng.normal(1.2, 0.6, n) + np.where(grp == "Drug A", -0.3, 0)).round(2)
     marker = (rng.normal(0, 1, n) + 1.4 * event).round(3)

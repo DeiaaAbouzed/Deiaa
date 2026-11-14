@@ -339,7 +339,7 @@ def km_plot(curves: dict, xlabel="Time", ylabel="Survival probability", risk_tab
         has_rt = risk_table is not None
         fig = Figure(figsize=(SETTINGS.fig_width_mm * MM * 1.35, SETTINGS.fig_height_mm * MM * (1.45 if has_rt else 1.1)))
         if has_rt:
-            gs = fig.add_gridspec(2, 1, height_ratios=[4, 0.35 + 0.28 * len(labels)], hspace=0.08)
+            gs = fig.add_gridspec(2, 1, height_ratios=[4, 0.45 + 0.28 * len(labels)], hspace=0.30)
             ax = fig.add_subplot(gs[0])
             axr = fig.add_subplot(gs[1], sharex=ax)
         else:
@@ -369,13 +369,13 @@ def km_plot(curves: dict, xlabel="Time", ylabel="Survival probability", risk_tab
             axr.set_yticklabels(list(reversed([str(l) for l in labels])), fontsize=SETTINGS.font_size - 1.5)
             for s in ["left", "top", "right"]:
                 axr.spines[s].set_visible(False)
-            axr.tick_params(axis="y", length=0)
+            axr.tick_params(axis="y", length=0, pad=16)
             axr.set_xlabel(xlabel)
             axr.set_title("Number at risk", fontsize=SETTINGS.font_size - 1, loc="left", fontweight="bold")
         else:
             ax.set_xlabel(xlabel)
         ax.set_xlim(left=0)
-        fig.subplots_adjust(left=0.18, right=0.96, top=0.96, bottom=0.12)
+        fig.subplots_adjust(left=0.22, right=0.96, top=0.96, bottom=0.12)
     return fig
 
 
@@ -387,7 +387,7 @@ def roc_plot(curves: dict, cut_points=None):
         fig, ax = new_figure(h_mm=SETTINGS.fig_width_mm)
         for i, k in enumerate(labels):
             fpr, tpr, auc = curves[k]
-            ax.plot(fpr, tpr, color=cols[i], lw=2.2, label=f"{k} (AUC = {auc:.3f})", drawstyle="steps-post")
+            ax.plot(fpr, tpr, color=cols[i], lw=2.2, label=f"{k} (AUC = {auc:.3f})")
             if cut_points and k in cut_points:
                 ax.scatter(*cut_points[k], s=60, color=cols[i], edgecolor="black", zorder=5)
         ax.plot([0, 1], [0, 1], ls="--", color="#999999", lw=1)
