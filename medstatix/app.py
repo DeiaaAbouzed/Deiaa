@@ -28,6 +28,15 @@ def selftest() -> int:
     from .report import manuscript, journals  # noqa: F401
     ok &= [v for _, v, _, _ in AN.rout([10.1, 9.8, 10.3, 9.9, 10.0, 10.2, 9.7, 25.0])] == [25.0]
     import docx  # noqa: F401
+    from .imaging import nuclei as NU, reader as RD
+    if NU.available():
+        img = IC.load_image(os.path.join(here, "HE_breast_carcinoma_1.png"))
+        r = RD.read_image(img, stain="H&E")
+        n = r["summary"]["Nuclei detected"]
+        lines.append(f"AI reader: {n} nuclei, {len(r['inflammatory'])} inflammatory suggestions")
+        ok &= n > 150
+    else:
+        lines.append("AI reader: onnxruntime missing"); ok = False
     lines.append("OK" if ok else "FAIL")
     print("\n".join(lines))
     return 0 if ok else 1

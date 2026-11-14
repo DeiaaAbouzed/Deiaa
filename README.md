@@ -37,6 +37,14 @@ MedStatix Pro brings together what researchers usually spread across SPSS, Graph
 | Meta-analysis | FE/RE (REML, DL), OR/RR/MD/SMD/generic, I², τ², prediction interval, Egger, leave-one-out, forest and funnel plots |
 | Sample size | t-tests, proportions, ANOVA, correlation, log-rank (Schoenfeld), diagnostic sensitivity (Buderer), Mead's resource equation for animal studies |
 
+## New in v1.4: AI image reader
+
+- **Nuclei found by deep learning:** the pretrained StarDist 2D "versatile H&E" model (Schmidt et al., MICCAI 2018; BSD-3) runs offline through ONNX Runtime. Its output matches the reference TensorFlow implementation (F1 0.998–1.0 on the sample images). Low-magnification images are enlarged automatically so that nuclei reach the size the model was trained on.
+- **Nucleus types:** a small neural network trained on the CoNSeP dataset (Graham et al., Medical Image Analysis 2019) classifies each nucleus as inflammatory, epithelial, spindle or other. On the 14 held-out CoNSeP test images, inflammatory cells reach precision 0.78, recall 0.73 and F1 0.77. Accuracy is lower on other tissues and species, which is why every result is a suggestion.
+- **Suggested labels:** inflammatory cells, inflammatory infiltrate foci, congestion (RBC-rich areas), optional vacuoles/fat (experimental) and, for IHC, DAB-positive nuclei graded per cell with thresholds set from the negative nuclei of the same image. Each suggestion carries a confidence. Delete the wrong ones and press Accept: labels and arrows are placed automatically and the confirmed counts go to the data sheet.
+- **Plain-language reading** in English and Arabic, plus a Methods paragraph with references, added to the results and the Word report.
+- The models only read the image; they never change pixels. Training data (MoNuSeg, TNBC, CoNSeP) are for research use; cite the references in publications.
+
 ## New in v1.3
 
 - **One-click publication-ready histology and IHC images:** pick the stain (H&E, IHC-DAB, Masson, Sirius red, PAS or auto), the source (microscope camera, phone photo through the eyepiece, or auto) and the strength (light, standard, strong). The app crops the black eyepiece ring of phone photos, removes noise and uneven illumination, whitens the slide background, sets black point, mid-tones and saturation to the stain's target, adds mild local contrast and sharpening, and verifies every stage with the integrity check. A before/after slider sits under the image; manual controls are under "Advanced". Quantification is always done on the illumination-corrected original, never on cosmetic edits.
@@ -94,7 +102,7 @@ python run_medstatix.py
 
 **Option A, on a Windows PC:** install Python 3.12 (64-bit) and, optionally, [Inno Setup 6](https://jrsoftware.org/isinfo.php), then double-click `build\build_windows.bat`. You get:
 - `dist\MedStatixPro\MedStatixPro.exe`, a portable app with no Python needed
-- `dist\installer\MedStatixPro-Setup-1.3.1.exe`, an installer with Start-menu and desktop shortcuts
+- `dist\installer\MedStatixPro-Setup-1.4.0.exe`, an installer with Start-menu and desktop shortcuts
 
 **Option B, automatically on GitHub:** push this folder to a GitHub repository. The workflow `.github/workflows/build-windows.yml` builds the installer and a portable ZIP on Windows. Run it from the *Actions* tab, or push a tag such as `v1.0.0` to publish a release.
 

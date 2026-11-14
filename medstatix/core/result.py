@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 APP_NAME = "MedStatix Pro"
-APP_VERSION = "1.3.1"
+APP_VERSION = "1.4.0"
 
 
 # ----------------------------------------------------------------------------

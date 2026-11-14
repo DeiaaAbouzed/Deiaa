@@ -98,6 +98,7 @@ OPS = {
     "background_white": ("Background whitening (neutral white slide background)", "تبييض الخلفية (خلفية الشريحة بيضاء محايدة)"),
     "black_point": ("Haze removal (black point)", "إزالة الضبابية (نقطة الأسود)"),
     "clahe": ("Mild local contrast (CLAHE on lightness only)", "تباين موضعي خفيف (CLAHE على الإضاءة فقط)"),
+    "deconvolve": ("Deblurring (Richardson–Lucy deconvolution)", "تقليل الضبابية (Richardson–Lucy deconvolution)"),
 }
 
 # Reference H&E appearance (target stain vectors and LAB statistics) — a well-stained
@@ -465,7 +466,24 @@ def op_clahe(f, strength=0.3, clip=0.008):
     return np.clip(color.lab2rgb(lab), 0, 1), {"strength": strength, "clip_limit": clip, "kernel": list(ks), "channel": "L* only"}
 
 
-FUNCS = {"crop": op_crop, "background_white": op_background_white, "black_point": op_black_point, "clahe": op_clahe, "flatfield": op_flatfield, "sharpen": op_sharpen, "white_balance": op_white_balance, "levels": op_levels, "auto_levels": op_auto_levels, "gamma": op_gamma,
+def op_deconvolve(f, strength=0.5, sigma=1.0, iterations=10):
+    """Mild deconvolution (Richardson 1972; Lucy 1974) with a small Gaussian point-spread function, applied identically to
+    every pixel of each colour channel and blended with the input (≤ 70 %). Restores some of the optical blur of the
+    microscope; it does not invent detail (the result is checked by the structure-integrity test)."""
+    from skimage.restoration import richardson_lucy
+    strength = float(np.clip(strength, 0, 0.7))
+    r = int(max(2, math.ceil(3 * sigma)))
+    y, x = np.mgrid[-r:r + 1, -r:r + 1]
+    psf = np.exp(-(x * x + y * y) / (2 * sigma * sigma)); psf /= psf.sum()
+    out = np.empty_like(f)
+    for c in range(f.shape[2]):
+        ch = np.clip(f[..., c], 1e-4, 1)
+        out[..., c] = richardson_lucy(ch, psf, num_iter=int(iterations), clip=True)
+    res = np.clip(f * (1 - strength) + out * strength, 0, 1)
+    return res, {"strength": strength, "psf_sigma_px": sigma, "iterations": int(iterations)}
+
+
+FUNCS = {"deconvolve": op_deconvolve, "crop": op_crop, "background_white": op_background_white, "black_point": op_black_point, "clahe": op_clahe, "flatfield": op_flatfield, "sharpen": op_sharpen, "white_balance": op_white_balance, "levels": op_levels, "auto_levels": op_auto_levels, "gamma": op_gamma,
          "saturation": op_saturation, "reinhard": op_reinhard, "macenko": op_macenko, "denoise": op_denoise}
 
 # Hard limits keep every operation within what image-integrity guidelines accept
@@ -501,6 +519,9 @@ class EditLog:
         if any(s["op"] == "clahe" for s in self.steps):
             txt += (" Mild contrast-limited adaptive histogram equalization (CLAHE; Zuiderveld 1994) was applied to the lightness "
                     "channel of the whole image (blended at ≤ 50 %), leaving stain hue unchanged.")
+        if any(s["op"] == "deconvolve" for s in self.steps):
+            txt += (" Optical blur was reduced by mild Richardson–Lucy deconvolution (Gaussian point-spread function, 10 iterations) "
+                    "applied identically to the whole image and blended with the original.")
         if any(s["op"] == "sharpen" for s in self.steps):
             txt += " Mild unsharp masking was applied uniformly to the whole image."
         if any(s["op"] == "denoise" for s in self.steps):
@@ -643,7 +664,7 @@ def integrity_report(original: np.ndarray, processed: np.ndarray, nuclear_fracti
 
 
 
-NEIGHBOURHOOD_OPS = ("denoise", "sharpen", "clahe")
+NEIGHBOURHOOD_OPS = ("denoise", "deconvolve", "sharpen", "clahe")
 
 
 def pipeline_integrity(original: np.ndarray, steps: list[dict]) -> dict:
@@ -910,13 +931,13 @@ def auto_enhance(img: np.ndarray, steps: list[dict] | None = None, stain: str = 
         # first soften the neighbourhood filters, then drop them, then drop steps from the end
         soft = False
         for s_ in steps:
-            k = "amount" if s_["op"] == "sharpen" else "strength" if s_["op"] in ("denoise", "clahe") else None
+            k = "amount" if s_["op"] == "sharpen" else "strength" if s_["op"] in ("denoise", "clahe", "deconvolve") else None
             if k and s_["params"].get(k, 0) > 0.2:
                 s_["params"] = {**s_["params"], k: round(s_["params"][k] / 2, 2)}
                 soft = True
         if soft:
             continue
-        for drop in ("sharpen", "clahe", "denoise"):
+        for drop in ("deconvolve", "sharpen", "clahe", "denoise"):
             if any(s["op"] == drop for s in steps):
                 steps = [s for s in steps if s["op"] != drop]
                 break
@@ -1121,7 +1142,8 @@ STAIN_PRESETS = {
 }
 SOURCES = {"auto": ("Auto-detect", "تحديد تلقائي"), "camera": ("Microscope camera / slide scanner", "كاميرا المجهر / ماسح الشرائح"),
            "phone": ("Phone through the eyepiece", "موبايل من خلال العدسة العينية")}
-LEVELS = {"light": (0.6, "Light", "خفيف"), "standard": (1.0, "Standard", "قياسي"), "strong": (1.3, "Strong", "قوي")}
+LEVELS = {"light": (0.6, "Light", "خفيف"), "standard": (1.0, "Standard", "قياسي"), "strong": (1.3, "Strong", "قوي"),
+          "max": (1.6, "Maximum", "أقصى")}
 
 
 def _stain_preset_name(img, stain):

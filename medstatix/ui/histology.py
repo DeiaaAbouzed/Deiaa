@@ -551,6 +551,29 @@ class HistologyStudio(QWidget):
         f.addRow(sd)
         il.addWidget(g)
         # export
+        g = QGroupBox(T("4 · AI image reader", "٤ · قارئ الصورة بالذكاء الاصطناعي")); f = QFormLayout(g)
+        hint = QLabel(T("A deep-learning model finds the nuclei, a second network types them (inflammatory, epithelial, "
+                        "spindle) and the reader proposes labels: inflammatory cells and foci, congestion, vacuoles, DAB-positive "
+                        "cells. Everything is a suggestion: delete wrong ones (select + Delete), then accept.",
+                        "نموذج تعلّم عميق يحدد الأنوية، وشبكة ثانية تصنّفها (التهابية، طلائية، مغزلية)، ثم يقترح القارئ التسميات: "
+                        "خلايا وبؤر التهابية، احتقان، فجوات، خلايا موجبة لـ DAB. كلها اقتراحات: احذف الخاطئ (تحديد ثم Delete) ثم اعتمد."))
+        hint.setWordWrap(True); hint.setObjectName("hint"); f.addRow(hint)
+        self.ai_conf = QSpinBox(); self.ai_conf.setRange(30, 95); self.ai_conf.setValue(65); self.ai_conf.setSuffix(" %")
+        self.ai_conf.setToolTip(T("Minimum confidence of a suggestion", "أقل درجة ثقة لعرض الاقتراح"))
+        f.addRow(T("Minimum confidence", "أقل ثقة"), self.ai_conf)
+        self.ai_types = QCheckBox(T("Also outline all nuclei by type", "تحديد كل الأنوية حسب نوعها أيضًا")); f.addRow(self.ai_types)
+        self.ai_vac = QCheckBox(T("Look for vacuoles / fat droplets (experimental)", "البحث عن الفجوات / قطرات الدهون (تجريبي)")); f.addRow(self.ai_vac)
+        rb = QPushButton("🤖 " + T("Read the image and suggest labels", "اقرأ الصورة واقترح التسميات")); rb.setObjectName("primary")
+        rb.clicked.connect(self.ai_read); f.addRow(rb)
+        self.ai_text = QLabel(""); self.ai_text.setWordWrap(True); self.ai_text.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        f.addRow(self.ai_text)
+        row = QHBoxLayout()
+        acc = QPushButton("✔ " + T("Accept (with labels)", "اعتماد مع التسميات")); acc.clicked.connect(self.ai_accept)
+        rej = QPushButton("✖ " + T("Discard", "تجاهل")); rej.clicked.connect(self.discard_detections)
+        row.addWidget(acc); row.addWidget(rej); f.addRow(row)
+        rp = QPushButton(T("Add the reading to the results / Word", "إضافة القراءة إلى النتائج / Word")); rp.clicked.connect(self.ai_report)
+        f.addRow(rp)
+        il.addWidget(g)
         g = QGroupBox(T("5 · Export", "٥ · التصدير")); f = QFormLayout(g)
         self.annot_on = QComboBox()
         self.annot_on.addItem(T("Enhanced image", "الصورة المحسّنة"), "processed")
@@ -983,6 +1006,173 @@ class HistologyStudio(QWidget):
         self.last_quant = res
         self.last_quant_type = q
         self.render_report()
+
+    # ---------------- AI reader
+    def _ai_stain(self):
+        st = self.pr_stain.currentData() if hasattr(self, "pr_stain") else "auto"
+        return "IHC" if st and str(st).startswith("IHC") else ("H&E" if st and st != "auto" else "auto")
+
+    def _suggest(self, item, kind, conf, tip):
+        item.setFlags(QGraphicsItem.ItemIsSelectable); item.setZValue(6)
+        item.setData(0, kind); item.setData(1, float(conf))
+        item.setToolTip(f"{tip} — {T('confidence', 'الثقة')} {conf * 100:.0f}% · " + T("select + Delete to reject", "حدده واضغط Delete للرفض"))
+        self.view.scene_.addItem(item); self.view.candidate_items.append(item)
+
+    def ai_read(self):
+        from ..imaging import reader as RD
+        if self.original is None:
+            return
+        img = IC.measurement_image(self.original, self.steps_done) if self.steps_done else self.original
+        try:
+            r = run_busy(self, T("Reading the image (AI)…", "جاري قراءة الصورة بالذكاء الاصطناعي…"),
+                         lambda: RD.read_image(img, self.px.value(), self._ai_stain(), self.ai_conf.value() / 100, vacuoles=self.ai_vac.isChecked()))
+        except Exception as e:
+            QMessageBox.critical(self, "", str(e)); return
+        self.view.clear_overlays(); self.view.clear_candidates()
+        self.ai = r
+        H, W = img.shape[:2]
+        lw = max(1.5, W / 700)
+        if self.ai_types.isChecked():
+            for c in r["cells"]:
+                col = RD.COLOURS.get(c["type"], "#9E9E9E")
+                path = QPainterPath(QPointF(c["poly"][0][1], c["poly"][0][0]))
+                for y, x in c["poly"][1:]:
+                    path.lineTo(QPointF(x, y))
+                path.closeSubpath()
+                it = QGraphicsPathItem(path); it.setPen(QPen(QColor(col), lw * 0.6)); it.setZValue(4)
+                self.view.scene_.addItem(it); self.view.overlay_items.append(it)
+        if r["stain"] == "IHC":
+            cols = ["#2962FF", "#FFD600", "#FF6D00", "#D50000"]
+            for c in r["cells"]:
+                if c["grade"] == 0 and not self.ai_types.isChecked():
+                    continue
+                path = QPainterPath(QPointF(c["poly"][0][1], c["poly"][0][0]))
+                for y, x in c["poly"][1:]:
+                    path.lineTo(QPointF(x, y))
+                path.closeSubpath()
+                it = QGraphicsPathItem(path); it.setPen(QPen(QColor(cols[c["grade"]]), lw, Qt.DashLine))
+                self._suggest(it, "dab%d" % c["grade"], c["det"], T(["Negative", "Weak +", "Moderate ++", "Strong +++"][c["grade"]],
+                                                                     ["سالب", "ضعيف +", "متوسط ++", "قوي +++"][c["grade"]]))
+        for c in r["inflammatory"]:
+            rr = max(3.0, (c["area_px"] / math.pi) ** 0.5 * 1.6)
+            it = QGraphicsEllipseItem(c["x"] - rr, c["y"] - rr, 2 * rr, 2 * rr)
+            it.setPen(QPen(QColor(RD.COLOURS["inflammatory"]), lw, Qt.DashLine))
+            self._suggest(it, "inflammatory", c["p"], T("Inflammatory cell", "خلية التهابية"))
+        for fo in r["foci"]:
+            if fo["hull"] is None:
+                continue
+            path = QPainterPath(QPointF(*fo["hull"][0]))
+            for x, y in fo["hull"][1:]:
+                path.lineTo(QPointF(x, y))
+            path.closeSubpath()
+            it = QGraphicsPathItem(path); it.setPen(QPen(QColor(RD.COLOURS["focus"]), lw * 1.5, Qt.DashLine))
+            self._suggest(it, "focus", fo["conf"], T(f"Inflammatory infiltrate ({fo['n']} cells)", f"ارتشاح التهابي ({fo['n']} خلية)"))
+        for cg in r["congestion"]:
+            y0, x0 = cg["bbox"][:2]
+            for cnt in cg["contours"]:
+                if len(cnt) < 6:
+                    continue
+                path = QPainterPath(QPointF(x0 + cnt[0][1] - 1, y0 + cnt[0][0] - 1))
+                for y, x in cnt[1:]:
+                    path.lineTo(QPointF(x0 + x - 1, y0 + y - 1))
+                it = QGraphicsPathItem(path); it.setPen(QPen(QColor(RD.COLOURS["congestion"]), lw, Qt.DashLine))
+                self._suggest(it, "congestion", cg["conf"], T("Congestion (RBC-rich)", "احتقان (غني بكرات الدم الحمراء)"))
+        for v in r["vacuoles"]:
+            it = QGraphicsEllipseItem(v["x"] - v["r"], v["y"] - v["r"], 2 * v["r"], 2 * v["r"])
+            it.setPen(QPen(QColor(RD.COLOURS["vacuole"]), lw, Qt.DashLine))
+            self._suggest(it, "vacuole", v["conf"], T("Vacuole", "فجوة"))
+        self.c_overlay.setChecked(True)
+        self.ai_text.setText(RD.describe(r, SETTINGS.language == "ar"))
+        self.last_quant = {k: v for k, v in r["summary"].items()}
+        self.last_quant_type = "AI image reader"
+        self.render_report()
+
+    def ai_accept(self):
+        """Keep the reviewed suggestions as ordinary annotations, add one label per finding, and recount."""
+        from ..imaging import reader as RD
+        r = getattr(self, "ai", None)
+        items = [it for it in self.view.candidate_items if it.scene()]
+        if r is None or not items:
+            self.accept_candidates(); return
+        W = self.processed.shape[1]
+        fs = max(10, int(W / 45))
+        kinds = {}
+        for it in items:
+            kinds.setdefault(it.data(0), []).append(it)
+            pen = it.pen(); pen.setStyle(Qt.SolidLine); it.setPen(pen)
+            it.setFlags(QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemIsMovable)
+        self.view.candidate_items = []
+        black = QColor("#000000")
+        labels = {"inflammatory": "Inflammatory cells", "focus": "Inflammatory infiltrate", "congestion": "Congestion",
+                  "vacuole": "Vacuolation", "dab3": "Strong positive (DAB)", "dab2": "Moderate positive", "dab1": "Weak positive"}
+        H = self.processed.shape[0]
+        placed = []
+        order = ["focus", "inflammatory", "congestion", "vacuole", "dab3", "dab2", "dab1"]
+        for kind in [k for k in order if k in kinds]:
+            its = kinds[kind]
+            if kind == "focus":
+                targets = sorted(its, key=lambda i: -i.sceneBoundingRect().width() * i.sceneBoundingRect().height())[:3]
+            elif kind == "congestion":
+                targets = [max(its, key=lambda i: i.sceneBoundingRect().width() * i.sceneBoundingRect().height())]
+            else:   # one label pointing at the densest group of cells of this kind
+                targets = [max(its, key=lambda i: sum(1 for j in its if (j.sceneBoundingRect().center() - i.sceneBoundingRect().center()).manhattanLength() < W / 8))]
+            for t in targets:
+                tip = t.sceneBoundingRect().center()
+                lab = LabelItem(labels[kind], QPointF(0, 0), black, fs)
+                bw, bh = lab.boundingRect().width(), lab.boundingRect().height()
+                # place the label toward the image centre, inside the frame, without overlapping earlier labels
+                dx = 1.0 if tip.x() < W * 0.6 else -1.0
+                dy = -1.0 if tip.y() > H * 0.3 else 1.0
+                nrm = 2 ** 0.5
+                L = 0.13 * max(W, H)
+                end = QPointF(tip.x() + dx / nrm * L, tip.y() + dy / nrm * L)
+                pos = QPointF(min(max(4, end.x() - bw / 2), W - bw - 4), min(max(4, end.y() - bh / 2), H - bh - 4))
+                for _ in range(12):
+                    box = QRectF(pos, lab.boundingRect().size()).adjusted(-6, -4, 6, 4)
+                    if not any(box.intersects(q) for q in placed):
+                        break
+                    pos = QPointF(pos.x(), min(H - bh - 4, pos.y() + bh * 1.3) if pos.y() + bh * 1.3 < H - bh else max(4, pos.y() - bh * 2.6))
+                placed.append(QRectF(pos, lab.boundingRect().size()))
+                lab.setPos(pos); self.view.scene_.addItem(lab)
+                anchor = QPointF(pos.x() + bw / 2, pos.y() + (bh if pos.y() < tip.y() else 0))
+                self.view.scene_.addItem(ArrowItem(anchor, tip, black, max(2.0, W / 450)))
+        n = {k: len(v) for k, v in kinds.items()}
+        q = {"Confirmed inflammatory cells": n.get("inflammatory", 0), "Confirmed inflammatory foci": n.get("focus", 0),
+             "Confirmed congestion areas": n.get("congestion", 0), "Confirmed vacuoles": n.get("vacuole", 0)}
+        if r["stain"] == "IHC":
+            g = [int(k[3]) for k, v in kinds.items() if k.startswith("dab") for _ in v]
+            tot = len(r["cells"])
+            pos = sum(1 for x in g if x > 0)
+            q = {"Nuclei": tot, "Confirmed positive nuclei": pos, "Positive nuclei %": 100 * pos / max(tot, 1),
+                 "Cell H-score (0–300)": 100 * sum(g) / max(tot, 1)}
+        else:
+            q = {k: v for k, v in q.items() if v or k == "Confirmed inflammatory cells"}
+            q["Nuclei"] = len(r["cells"])
+            q["Inflammatory cells % of nuclei"] = 100 * n.get("inflammatory", 0) / max(len(r["cells"]), 1)
+            if self.px.value():
+                q["Inflammatory cells per mm²"] = n.get("inflammatory", 0) / max(r["summary"].get("Tissue area (mm²)", 0), 1e-9)
+        self.last_quant = q; self.last_quant_type = "AI image reader (confirmed)"
+        self.render_report()
+
+    def ai_report(self):
+        from ..imaging import reader as RD
+        r = getattr(self, "ai", None)
+        if r is None:
+            QMessageBox.information(self, "", T("Read the image first.", "اقرأ الصورة أولًا.")); return
+        from ..plots.figures import styled
+        from matplotlib.figure import Figure
+        res = Result(T("AI image reading: ", "قراءة الصورة بالذكاء الاصطناعي: ") + self.name)
+        res.text(RD.describe(r, False) + ("\n\n" + RD.describe(r, True) if SETTINGS.language == "ar" else ""))
+        rows = [{"Measure": k, "Value": v} for k, v in (self.last_quant or r["summary"]).items()]
+        res.table(pd.DataFrame(rows), "AI-assisted image reading (suggestions reviewed by the investigator)")
+        with styled():
+            fig = Figure(figsize=(9, 4.5)); ax1, ax2 = fig.subplots(1, 2)
+            ax1.imshow(self.base); ax1.set_title("Original"); ax1.axis("off")
+            ax2.imshow(self.render_annotated(True)); ax2.set_title("Labels"); ax2.axis("off"); fig.tight_layout()
+        res.figure(fig, "Image with the confirmed labels.")
+        from ..imaging import nuclei as NUm, cellclass as CCm
+        res.methods(r["methods"] + " References: " + NUm.CITATION + " " + CCm.CITATION)
+        self.send_result.emit(res)
 
     def accept_candidates(self):
         """Convert reviewed suggestions into permanent circle annotations and update the count."""
