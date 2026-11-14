@@ -37,6 +37,23 @@ MedStatix Pro brings together what researchers usually spread across SPSS, Graph
 | Meta-analysis | FE/RE (REML, DL), OR/RR/MD/SMD/generic, I², τ², prediction interval, Egger, leave-one-out, forest and funnel plots |
 | Sample size | t-tests, proportions, ANOVA, correlation, log-rank (Schoenfeld), diagnostic sensitivity (Buderer), Mead's resource equation for animal studies |
 
+## Histology & IHC studio (v1.1)
+
+A tab for preparing histopathology and immunohistochemistry images for Q1 journals, built around image integrity:
+
+- **Global, disclosed enhancement only:** white balance, brightness/contrast, gamma, saturation, stain normalisation (Reinhard; Macenko for H&E), and mild edge-preserving denoising. There is no local retouching and no generative/AI pixel synthesis. The original image is always kept.
+- **Integrity check after every change:** rank-normalised SSIM, edge correlation, nuclear-mask Dice, and a local-edit detector that fits the global colour mapping and flags clustered departures from it (cloning, painting, erasing, local blur). The verdict is shown in green or red.
+- **Edit log and Methods paragraph:** exported as JSON and text, ready to paste into the manuscript.
+- **Annotation of real structures:** arrows, labels (presets such as inflammatory cells, fibrosis, congestion, necrosis), circles, rectangles, freehand outlines, and a calibrated scale bar (µm/px). There is also a multi-panel composer with A/B/C labels.
+- **Quantification:**
+  - IHC DAB: % positive area, pixel H-score, % positive nuclei, cell H-score.
+  - Fibrosis/collagen % for Masson trichrome, Sirius red and Van Gieson.
+  - Inflammatory-cell *suggestions* that the user accepts or rejects one by one.
+  - RBC-rich (congestion) area.
+  - Measurements are taken on native stain colours and can be sent to the dataset for statistics.
+
+Validation (`tests/test_imaging.py`, real public H&E and IHC images): all 9 legitimate pipelines pass on both H&E images. All 4 kinds of local manipulation are flagged. Fibrosis matches synthetic ground truth exactly.
+
 ## Validation
 
 `tests/test_validation.py` compares the engine with published reference outputs: R (`t.test`, `aov`, `TukeyHSD`, `kruskal.test`, `fisher.test`, `cor.test`, `lm`, `glm`, `survdiff`, `coxph`, `power.t.test`, `power.prop.test`), metafor (`rma` REML/DL on the BCG data), Shrout & Fleiss (1979) for ICC, and Dobson's beetle data for probit/logit. **45/45 checks pass.** A smoke test also runs every analysis end to end. Inside the app, open *Help → Validation report*.
@@ -56,7 +73,7 @@ python run_medstatix.py
 
 **Option A, on a Windows PC:** install Python 3.12 (64-bit) and, optionally, [Inno Setup 6](https://jrsoftware.org/isinfo.php), then double-click `build\build_windows.bat`. You get:
 - `dist\MedStatixPro\MedStatixPro.exe`, a portable app with no Python needed
-- `dist\installer\MedStatixPro-Setup-1.0.0.exe`, an installer with Start-menu and desktop shortcuts
+- `dist\installer\MedStatixPro-Setup-1.1.0.exe`, an installer with Start-menu and desktop shortcuts
 
 **Option B, automatically on GitHub:** push this folder to a GitHub repository. The workflow `.github/workflows/build-windows.yml` builds the installer and a portable ZIP on Windows. Run it from the *Actions* tab, or push a tag such as `v1.0.0` to publish a release.
 

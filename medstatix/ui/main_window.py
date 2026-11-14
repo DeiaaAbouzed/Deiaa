@@ -85,6 +85,11 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self._build_vars_tab(), "≡  " + tr("tab_vars"))
         self.tabs.addTab(self._build_output_tab(), "📊  " + tr("tab_output"))
         self.tabs.addTab(self._build_fig_tab(), "🎨  " + tr("tab_figs"))
+        from .histology import HistologyStudio
+        self.histo = HistologyStudio(self)
+        self.histo.send_result.connect(self._histo_result)
+        self.histo.send_rows.connect(self._histo_rows)
+        self.tabs.addTab(self.histo, "🔬  " + tr("tab_histo"))
         wrap = QWidget(); wl = QVBoxLayout(wrap); wl.setContentsMargins(8, 8, 8, 8); wl.addWidget(self.tabs)
         splitter.addWidget(wrap)
         splitter.setStretchFactor(1, 1)
@@ -281,6 +286,19 @@ class MainWindow(QMainWindow):
         panel.setFixedWidth(300)
         lay.addWidget(panel)
         return w
+
+    def _histo_result(self, res):
+        self.entries.append({"result": res, "aid": "__histo__", "kwargs": {}, "df": None})
+        self.refresh_output(scroll_end=True); self.refresh_fig_list(); self.tabs.setCurrentIndex(2)
+
+    def _histo_rows(self, rows):
+        if self.dataset_name == "Histology measurements":
+            self.df = pd.concat([self.df, rows], ignore_index=True)
+            self.model.set_df(self.df); self.refresh_vars()
+        else:
+            self.load_df(rows, "Histology measurements")
+            self.tabs.setCurrentIndex(4)
+        self.statusBar().showMessage(f"Histology measurements: {len(self.df)} rows", 5000)
 
     # ------------------------------------------------------------------ data
     def load_df(self, df, name=""):
@@ -620,6 +638,8 @@ class MainWindow(QMainWindow):
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             for e in self.entries:
+                if e["aid"] == "__histo__":
+                    continue
                 if e["aid"] == "__smart__":
                     e["result"], _ = auto_analyze(e["df"], e["kwargs"]["outcome"], e["kwargs"]["factor"])
                 else:

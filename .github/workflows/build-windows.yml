@@ -25,6 +25,10 @@ jobs:
         run: python -m pytest tests -q
       - name: Build executable
         run: pyinstaller build/medstatix.spec --noconfirm --distpath dist --workpath build/work
+      - name: Self-test frozen app (imaging + statistics)
+        run: |
+          $p = Start-Process -FilePath dist\MedStatixPro\MedStatixPro.exe -ArgumentList '--selftest' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Write-Error "self-test failed"; exit 1 }
       - name: Build installer
         run: |
           choco install innosetup -y --no-progress
@@ -40,10 +44,10 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: medstatix-v1.0.0
-          name: MedStatix Pro 1.0.0 (Windows)
+          tag_name: medstatix-v1.1.0
+          name: MedStatix Pro 1.1.0 (Windows)
           target_commitish: ${{ github.sha }}
-          body: "MedStatix Pro – Windows installer (MedStatixPro-Setup-1.0.0.exe) and portable ZIP."
+          body: "MedStatix Pro 1.1.0 – adds the Histology & IHC studio (journal-safe global enhancement with integrity check and edit log, annotation, scale bar, panel composer, IHC H-score, fibrosis %, inflammatory-cell suggestions). Windows installer (MedStatixPro-Setup-1.1.0.exe) and portable ZIP."
           files: |
             dist/installer/*.exe
             dist/MedStatixPro-portable-win64.zip

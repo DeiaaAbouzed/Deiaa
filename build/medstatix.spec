@@ -4,10 +4,10 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 hidden = (collect_submodules("statsmodels") + collect_submodules("scipy.stats") + collect_submodules("scipy.optimize")
-          + collect_submodules("scipy.special") + ["pyreadstat", "openpyxl", "docx", "PIL"])
+          + collect_submodules("scipy.special") + collect_submodules("scipy.ndimage") + collect_submodules("skimage") + ["pyreadstat", "openpyxl", "docx", "PIL"])
 datas = [(os.path.join(ROOT, "medstatix", "resources"), "medstatix/resources"),
          (os.path.join(ROOT, "tests", "test_validation.py"), "medstatix/validation")]
-datas += collect_data_files("docx") + collect_data_files("statsmodels")
+datas += collect_data_files("docx") + collect_data_files("statsmodels") + collect_data_files("skimage")
 
 a = Analysis([os.path.join(ROOT, "run_medstatix.py")], pathex=[ROOT], hiddenimports=hidden, datas=datas,
              excludes=["tkinter", "PyQt5", "PyQt6", "IPython", "jupyter", "notebook", "pytest", "sphinx",
