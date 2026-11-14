@@ -2,6 +2,7 @@ name: Build Windows installer
 
 on:
   push:
+    branches: ["medstatix-pro"]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -37,9 +38,12 @@ jobs:
             dist/installer/*.exe
             dist/MedStatixPro-portable-win64.zip
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: medstatix-v1.0.0
+          name: MedStatix Pro 1.0.0 (Windows)
+          target_commitish: ${{ github.sha }}
+          body: "MedStatix Pro – Windows installer (MedStatixPro-Setup-1.0.0.exe) and portable ZIP."
           files: |
             dist/installer/*.exe
             dist/MedStatixPro-portable-win64.zip
