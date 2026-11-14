@@ -336,6 +336,10 @@ def anova1(df, outcome, group, posthoc="Tukey HSD"):
     lev = stats.levene(*arrs, center="median")
     bart = stats.bartlett(*arrs)
     norm, all_normal = normality_check(g)
+    if len(g) >= 3:   # ANOVA assumption = normal residuals (pooled); per-group tests over-flag with many groups
+        _res = np.concatenate([a - a.mean() for a in g.values()])
+        if len(_res) >= 3:
+            all_normal = stats.shapiro(_res)[1] >= 0.05 if len(_res) <= 5000 else stats.normaltest(_res)[1] >= 0.05
     res.table(pd.DataFrame([
         {"Test": "Welch ANOVA", "Statistic": Fw, "df1": k - 1, "df2": df2w, "p": pw},
         {"Test": "Levene (Brown-Forsythe, median)", "Statistic": lev.statistic, "df1": k - 1, "df2": N - k, "p": lev.pvalue},

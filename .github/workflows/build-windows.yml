@@ -44,10 +44,10 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: medstatix-v1.1.0
-          name: MedStatix Pro 1.1.0 (Windows)
+          tag_name: medstatix-v1.1.1
+          name: MedStatix Pro 1.1.1 (Windows)
           target_commitish: ${{ github.sha }}
-          body: "MedStatix Pro 1.1.0 – adds the Histology & IHC studio (journal-safe global enhancement with integrity check and edit log, annotation, scale bar, panel composer, IHC H-score, fibrosis %, inflammatory-cell suggestions). Windows installer (MedStatixPro-Setup-1.1.0.exe) and portable ZIP."
+          body: "MedStatix Pro 1.1.1 – smart Excel import (stacked tables, groups in rows, Mean ± SD rows, text/Arabic numbers, sheet choice), import assistant with one-click analyses, friendly Arabic error messages. Includes 1.1.0, which added the Histology & IHC studio (journal-safe global enhancement with integrity check and edit log, annotation, scale bar, panel composer, IHC H-score, fibrosis %, inflammatory-cell suggestions). Windows installer (MedStatixPro-Setup-1.1.1.exe) and portable ZIP."
           files: |
             dist/installer/*.exe
             dist/MedStatixPro-portable-win64.zip

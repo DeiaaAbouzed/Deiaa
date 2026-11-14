@@ -73,7 +73,7 @@ python run_medstatix.py
 
 **Option A, on a Windows PC:** install Python 3.12 (64-bit) and, optionally, [Inno Setup 6](https://jrsoftware.org/isinfo.php), then double-click `build\build_windows.bat`. You get:
 - `dist\MedStatixPro\MedStatixPro.exe`, a portable app with no Python needed
-- `dist\installer\MedStatixPro-Setup-1.1.0.exe`, an installer with Start-menu and desktop shortcuts
+- `dist\installer\MedStatixPro-Setup-1.1.1.exe`, an installer with Start-menu and desktop shortcuts
 
 **Option B, automatically on GitHub:** push this folder to a GitHub repository. The workflow `.github/workflows/build-windows.yml` builds the installer and a portable ZIP on Windows. Run it from the *Actions* tab, or push a tag such as `v1.0.0` to publish a release.
 

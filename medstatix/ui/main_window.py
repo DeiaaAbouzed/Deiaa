@@ -364,6 +364,12 @@ class MainWindow(QMainWindow):
         msg, details = friendly(e)
         box = QMessageBox(QMessageBox.Warning, tr("error"), msg, parent=self)
         box.setDetailedText(details)
+        from PySide6.QtWidgets import QSpacerItem, QSizePolicy
+        lay = box.layout()
+        lay.addItem(QSpacerItem(520, 0, QSizePolicy.Minimum, QSizePolicy.Expanding), lay.rowCount(), 0, 1, lay.columnCount())
+        for b in box.buttons():
+            if box.buttonRole(b) == QMessageBox.ActionRole:
+                b.setText("التفاصيل الفنية…" if SETTINGS.language == "ar" else "Technical details…")
         box.exec()
 
     def import_assistant(self, report):
