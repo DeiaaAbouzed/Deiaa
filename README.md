@@ -39,6 +39,13 @@ MedStatix Pro brings together what researchers usually spread across SPSS, Graph
 | Charts | Heatmap, volcano, radar, Kaplan–Meier, forest |
 | Sample size | **G*Power-style a priori / post hoc / sensitivity**, t-tests, proportions, ANOVA, correlation, log-rank (Schoenfeld), diagnostic sensitivity (Buderer), Mead's resource equation for animal studies |
 
+## New in v1.7: MedStatix Signature outputs
+
+- **Signature tables** (Settings → Output; APA and SPSS remain available): indigo header band with a crimson rule, light zebra rows, significant p values in bold crimson, in the app and in Word with fitted column widths.
+- **Signature figures and palette**: control / sham / vehicle groups in neutral greys, the disease model in crimson, treatments in distinct cool hues; white-edged points, hairline y grid.
+- **Journal summary table** (`journal_table`): markers × groups, mean ± SD (or median (IQR)) with * versus control and # versus the disease model, plus a multi-panel A/B/C figure. Added automatically when Smart Analyze runs on several markers.
+- Groups keep the order of the experimental design; captions name the test actually used with its statistic, df, p and effect size.
+
 ## New in v1.6: AI reader for rodent tissue
 
 - **Scale bar (1.6.1)**: pixel size from a saved calibration per objective or read from the bar already on the image; automatic round length, position, black/white style with or without a box; batch processing adds a calibrated bar to every saved image (never a second one).

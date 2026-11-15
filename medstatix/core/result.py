@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 APP_NAME = "MedStatix Pro"
-APP_VERSION = "1.6.1"
+APP_VERSION = "1.7.0"
 
 
 # ----------------------------------------------------------------------------
@@ -181,12 +181,12 @@ class Result:
                 head = "🧠 التفسير الذكي" if lang == "ar" else "🧠 Smart interpretation"
                 parts.append(_card(f'<b>{head}:</b><br>{html.escape(txt).replace(chr(10), "<br>")}', "#EEF6FF", "#1F6FEB", "interpret", d))
             elif b.kind == "methods":
-                parts.append(_card(f"<b>Methods / Results text (ready to paste):</b><br>{html.escape(b.content)}", "#F3FAF3", "#2E8B57", "methods"))
+                parts.append(_card(f'<p dir="ltr" align="left" style="margin:0"><b>Methods / Results text (ready to paste):</b><br>{html.escape(b.content)}</p>', "#F3FAF3", "#2E8B57", "methods"))
             elif b.kind == "table":
                 tcount += 1
                 df = self.format_df(b.content, b.p_columns)
                 cap = f"Table {tcount}. {b.caption}" if b.caption else f"Table {tcount}"
-                parts.append(_df_to_html(df, cap, b.note))
+                parts.append(_df_to_html(df, cap, b.note, significant_cells(b.content, b.p_columns)))
             elif b.kind == "figure":
                 fcount += 1
                 cap = f"Figure {fcount}. {b.caption}" if b.caption else f"Figure {fcount}"
@@ -196,7 +196,7 @@ class Result:
                     src = "data:image/png;base64," + fig_to_base64(b.content, dpi=110)
                 else:
                     src = ""
-                parts.append(f'<div class="figure"><img src="{src}" width="{fig_width_px(b.content)}"><div class="caption">'
+                parts.append(f'<div class="figure" dir="ltr" align="left"><img src="{src}" width="{fig_width_px(b.content)}"><div class="caption" dir="ltr" align="left">'
                              f'<b>{html.escape(cap.split(".")[0])}.</b>{html.escape(cap[len(cap.split(".")[0]) + 1:])}</div></div>')
         counters["t"], counters["f"] = tcount, fcount
         parts.append("</div>")
@@ -222,6 +222,29 @@ def _spss():
     return getattr(SETTINGS, "table_style", "APA") == "SPSS"
 
 
+def _signature():
+    from .settings import SETTINGS
+    return getattr(SETTINGS, "table_style", "Signature") == "Signature"
+
+
+def significant_cells(df: pd.DataFrame, p_columns=(), alpha=0.05) -> set:
+    """(row position, column position) of p values below alpha, and of their 'Summary' stars, for emphasis."""
+    out = set()
+    cols = list(df.columns)
+    for j, c in enumerate(cols):
+        if str(c) not in p_columns:
+            continue
+        for i, v in enumerate(df[c].tolist()):
+            try:
+                if v is not None and not isinstance(v, str) and float(v) < alpha:
+                    out.add((i, j))
+                    if "Summary" in cols:
+                        out.add((i, cols.index("Summary")))
+            except (TypeError, ValueError):
+                pass
+    return out
+
+
 def _fmt_p_spss(p):
     """SPSS-style significance: three decimals without the leading zero; values below .001 shown as <.001."""
     if p is None or (isinstance(p, float) and math.isnan(p)):
@@ -229,25 +252,38 @@ def _fmt_p_spss(p):
     return "<.001" if p < 0.001 else f"{p:.3f}".lstrip("0")
 
 
-def _df_to_html(df: pd.DataFrame, caption: str, note: str) -> str:
+def _df_to_html(df: pd.DataFrame, caption: str, note: str, sig: set | None = None) -> str:
     show_index = not isinstance(df.index, pd.RangeIndex)
+    sig = sig or set()
     if _spss():
         rows = ['<table class="spss" cellspacing="0" cellpadding="4" border="1">']
+    elif _signature():
+        rows = ['<table class="sig" cellspacing="0" cellpadding="5">']
     else:
         rows = ['<table class="apa" cellspacing="0" cellpadding="4">']
-    rows.append(f'<caption>{html.escape(caption)}</caption>')
+    if _signature() and ". " in caption:
+        num, _, rest = caption.partition(". ")
+        rows.append(f'<caption><span class="tnum">{html.escape(num)}.</span>&nbsp; {html.escape(rest)}</caption>')
+    else:
+        rows.append(f'<caption>{html.escape(caption)}</caption>')
     head = "<tr>"
     if show_index:
         head += f"<th>{html.escape(str(df.index.name or ''))}</th>"
     for c in df.columns:
         head += f"<th>{html.escape(str(c))}</th>"
     rows.append(head + "</tr>")
-    for idx, r in df.iterrows():
-        line = "<tr>"
+    zebra = _signature()
+    for i, (idx, r) in enumerate(df.iterrows()):
+        line = '<tr class="alt">' if zebra and i % 2 == 1 else "<tr>"
         if show_index:
             line += f'<td class="rowhead">{html.escape(str(idx))}</td>'
-        for v in r.values:
-            line += f"<td>{html.escape(str(v))}</td>"
+        for j, v in enumerate(r.values):
+            cls = []
+            if j == 0 and not show_index and zebra:
+                cls.append("first")
+            if (i, j) in sig:
+                cls.append("psig")
+            line += (f'<td class="{" ".join(cls)}">' if cls else "<td>") + f"{html.escape(str(v))}</td>"
         rows.append(line + "</tr>")
     rows.append("</table>")
     if note:

@@ -63,6 +63,10 @@ class MainWindow(QMainWindow):
                     setattr(SETTINGS, k, stored)
                 except (TypeError, ValueError):
                     pass
+        # 1.7: the MedStatix Signature house style becomes the default once (it can be changed back in Settings)
+        if str(self.qs.value("style_version", "0")) < "2":
+            SETTINGS.fig_style, SETTINGS.palette, SETTINGS.table_style = "Signature", "MedStatix Signature", "Signature"
+            self.qs.setValue("style_version", "2")
 
     def _save_settings(self):
         for k, v in SETTINGS.as_dict().items():
@@ -664,6 +668,18 @@ class MainWindow(QMainWindow):
                 done += 1
             except Exception as e:
                 errors.append((o, e))
+        if len(outcomes) >= 2 and factor:
+            try:   # several markers compared across the same groups: add the one-table summary journals ask for
+                from ..analyses import run as _run
+                from ..core.data import var_kind
+                nums = [o for o in outcomes if var_kind(self.df[o]) == "continuous"]
+                if len(nums) >= 2 and var_kind(self.df[factor]) in ("categorical", "binary"):
+                    kw = {"variables": nums, "group": factor}
+                    self.entries.append({"result": _run("journal_table", self.df.copy(), **kw), "aid": "journal_table",
+                                         "kwargs": kw, "df": self.df.copy()})
+                    done += 1
+            except Exception as e:
+                errors.append(("summary table", e))
         QApplication.restoreOverrideCursor()
         if done:
             self.after_result()

@@ -20,7 +20,15 @@ from ..core.result import stars
 
 MM = 1 / 25.4
 
+# The MedStatix house palette: neutral slate for control / sham / vehicle groups, a warm crimson for the disease model
+# and cool, clearly separated hues for treatments (all pairs distinguishable with red-green colour-vision deficiency).
+SIGNATURE = ["#26355D", "#C8364B", "#0F7C8C", "#E0A030", "#6A4C93", "#3E8E5E", "#D9734E", "#5C6B7A"]
+CONTROL_GREYS = ["#6B7785", "#98A4B0", "#4F5B67", "#B4BEC8"]
+CONTROL_WORDS = ("control", "normal", "sham", "vehicle", "saline", "naive", "naïve", "baseline", "untreated", "ctrl",
+                 "كنترول", "ضابطة", "طبيعي", "سليم")
+
 PALETTES = {
+    "MedStatix Signature": SIGNATURE,
     "Prism": ["#1F4E9A", "#C0392B", "#2E8B57", "#E08E0B", "#7D3C98", "#17A2B8", "#5D6D7E", "#D35400"],
     "Okabe-Ito": ["#0072B2", "#D55E00", "#009E73", "#E69F00", "#CC79A7", "#56B4E9", "#F0E442", "#000000"],
     "Grayscale": ["#000000", "#7F7F7F", "#BFBFBF", "#404040", "#A6A6A6", "#D9D9D9", "#262626", "#595959"],
@@ -36,13 +44,33 @@ PALETTES = {
     "Pastel": ["#8DA0CB", "#FC8D62", "#66C2A5", "#E78AC3", "#A6D854", "#FFD92F", "#E5C494", "#B3B3B3"],
 }
 
-FIG_STYLES = ["Prism", "Classic", "Nature", "ggplot", "Minimal"]
+FIG_STYLES = ["Signature", "Prism", "Classic", "Nature", "ggplot", "Minimal"]
 GROUP_PLOT_TYPES = ["Scatter + mean ± SD", "Bar + points", "Box + points", "Violin + points", "Bar (no points)"]
 
 
 def palette(n=8):
     cols = PALETTES.get(SETTINGS.palette, PALETTES["Prism"])
     return [cols[i % len(cols)] for i in range(n)]
+
+
+def is_control(label) -> bool:
+    s = str(label).lower()
+    return any(w in s for w in CONTROL_WORDS)
+
+
+def group_colours(labels) -> list:
+    """Colours for groups. With the Signature palette, control-type groups (control, sham, vehicle, normal…) get
+    neutral slate tones and the other groups take the palette in order, starting with the crimson 'model' colour."""
+    labels = list(labels)
+    if SETTINGS.palette != "MedStatix Signature" or not any(is_control(l) for l in labels) or all(is_control(l) for l in labels):
+        return palette(len(labels))
+    out, g, c = [], 0, 1
+    for l in labels:
+        if is_control(l):
+            out.append(CONTROL_GREYS[g % len(CONTROL_GREYS)]); g += 1
+        else:
+            out.append(SIGNATURE[c % len(SIGNATURE)]); c += 1
+    return out
 
 
 def style_rc():
@@ -78,7 +106,15 @@ def style_rc():
         "savefig.facecolor": "white",
     }
     st = s.fig_style
-    if st == "Classic":  # SPSS-like boxed
+    if st == "Signature":   # the MedStatix house style: quiet ink colour, semibold labels, hairline y grid
+        ink = "#1D2433"
+        base.update({"axes.linewidth": 1.1, "xtick.major.width": 1.1, "ytick.major.width": 1.1,
+                     "xtick.major.size": 4.5, "ytick.major.size": 4.5, "axes.labelweight": "bold",
+                     "axes.titleweight": "bold", "axes.titlelocation": "left", "axes.edgecolor": ink,
+                     "axes.labelcolor": ink, "xtick.color": ink, "ytick.color": ink, "text.color": ink,
+                     "axes.grid": True, "axes.grid.axis": "y", "grid.color": "#E3E8EF", "grid.linewidth": 0.7,
+                     "axes.axisbelow": True, "lines.linewidth": 1.5, "axes.labelpad": 6})
+    elif st == "Classic":  # SPSS-like boxed
         base.update({"axes.spines.top": True, "axes.spines.right": True, "axes.linewidth": 1.0,
                      "axes.labelweight": "normal", "axes.titleweight": "normal",
                      "xtick.direction": "in", "ytick.direction": "in", "xtick.major.width": 1, "ytick.major.width": 1})
@@ -214,7 +250,8 @@ def scatter_fit(x, y, xlabel="", ylabel="", annotate="", ci=True):
     with styled():
         fig, ax = new_figure()
         c = palette(1)[0]
-        ax.scatter(x, y, s=30, color=c, edgecolor="black", linewidth=0.5, zorder=3)
+        sig = SETTINGS.fig_style == "Signature"
+        ax.scatter(x, y, s=36 if sig else 30, color=c, edgecolor="white" if sig else "black", linewidth=0.7 if sig else 0.5, zorder=3)
         if len(x) > 2:
             b1, b0 = np.polyfit(x, y, 1)
             xs = np.linspace(x.min(), x.max(), 200)
@@ -229,9 +266,32 @@ def scatter_fit(x, y, xlabel="", ylabel="", annotate="", ci=True):
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         if annotate:
-            ax.text(0.03, 0.97, annotate, transform=ax.transAxes, va="top", ha="left", fontsize=SETTINGS.font_size - 1)
+            _place_annotation(ax, x, y, annotate)
         fig.tight_layout()
     return fig
+
+
+def _place_annotation(ax, x, y, text):
+    """Put a statistics label in the emptiest corner of the plot, on a soft white box, never over the data."""
+    ax.margins(x=0.05, y=0.08)
+    fig = ax.figure
+    fig.canvas.draw()
+    (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+    u = (np.asarray(x, float) - x0) / max(x1 - x0, 1e-12)
+    v = (np.asarray(y, float) - y0) / max(y1 - y0, 1e-12)
+    best = None
+    for (cx, cy, ha, va) in [(0.03, 0.97, "left", "top"), (0.97, 0.97, "right", "top"),
+                             (0.03, 0.03, "left", "bottom"), (0.97, 0.03, "right", "bottom")]:
+        bx = (u < 0.5) if ha == "left" else (u > 0.5)
+        by = (v > 0.78) if va == "top" else (v < 0.22)
+        n = int(np.sum(bx & by))
+        if best is None or n < best[0]:
+            best = (n, cx, cy, ha, va)
+    n, cx, cy, ha, va = best
+    if n:   # every corner has data: make room above the points
+        lo, hi = ax.get_ylim(); ax.set_ylim(lo, hi + 0.22 * (hi - lo)); cx, cy, ha, va = 0.03, 0.97, "left", "top"
+    ax.text(cx, cy, text, transform=ax.transAxes, va=va, ha=ha, fontsize=SETTINGS.font_size - 0.5, zorder=6,
+            bbox=dict(boxstyle="round,pad=0.35", fc="white", ec="#C9D2DE", lw=0.6, alpha=0.92))
 
 
 def heatmap(mat, labels, title="Correlation matrix", vmin=-1, vmax=1, annot_p=None):

@@ -13,7 +13,7 @@ from ..core.settings import SETTINGS
 HTML_CSS = """
 body{font-family:'Segoe UI',Arial,sans-serif;color:#1d2433;margin:24px;}
 .result{margin-bottom:34px;padding-bottom:18px;border-bottom:2px solid #e3e8f0;}
-h2{color:#0b4f8a;font-size:20px;margin:6px 0 2px 0;}
+h2{color:#26355D;font-size:20px;margin:6px 0 2px 0;}
 h3{color:#13395f;font-size:15px;margin:14px 0 4px 0;}
 .subtitle{color:#5b6b82;font-size:12px;margin-bottom:8px;}
 table.apa{border-collapse:collapse;margin:8px 0 4px 0;font-size:12.5px;min-width:320px;}
@@ -27,6 +27,16 @@ table.spss caption{caption-side:top;text-align:center;font-weight:700;padding:4p
 table.spss th{border:1px solid #9AA5B1;padding:4px 8px;text-align:center;background:#DCE6F1;color:#000;font-weight:600;}
 table.spss td{border:1px solid #C3CBD4;padding:3px 8px;text-align:right;}
 table.spss td:first-child{text-align:left;background:#F2F5F9;font-weight:600;}
+table.sig{border-collapse:collapse;margin:10px 0 4px 0;font-size:12.5px;min-width:340px;}
+table.sig caption{caption-side:top;text-align:left;font-weight:600;padding:6px 0 6px 0;color:#1D2433;font-size:13px;}
+table.sig caption .tnum{color:#C8364B;font-weight:700;}
+table.sig th{background:#26355D;color:#FFFFFF;font-weight:600;padding:6px 10px;text-align:center;border-bottom:2px solid #C8364B;}
+table.sig td{padding:5px 10px;text-align:center;color:#1D2433;border-bottom:1px solid #E3E8EF;}
+table.sig tr.alt td{background:#F5F7FA;}
+table.sig td.first, table.sig td.rowhead{text-align:left;font-weight:600;color:#26355D;}
+table.sig td.psig{font-weight:700;color:#B0233A;}
+table.sig tr:last-child td{border-bottom:2px solid #26355D;}
+table.apa td.psig, table.spss td.psig{font-weight:700;}
 .tnote{font-size:11.5px;color:#4a5568;margin:2px 0 10px 0;}
 .note{font-size:12px;color:#4a5568;}
 .warning{background:#fff4e5;border-left:4px solid #e08e0b;padding:6px 10px;font-size:12.5px;}
@@ -70,10 +80,16 @@ def results_to_docx(results: list[Result], path: str, include_methods=True):
     from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Pt, Mm, RGBColor
+    from ..core.result import _spss, _signature, significant_cells
+    signature = _signature()
     doc = Document()
     st = doc.styles["Normal"]
-    st.font.name = "Times New Roman"
+    st.font.name = "Calibri" if signature else "Times New Roman"
     st.font.size = Pt(11)
+    if signature:
+        for lvl, size in ((1, 15), (2, 12.5)):
+            hs = doc.styles[f"Heading {lvl}"]
+            hs.font.name = "Calibri"; hs.font.size = Pt(size); hs.font.color.rgb = RGBColor(0x26, 0x35, 0x5D)
     sec = doc.sections[0]
     sec.left_margin = sec.right_margin = Mm(20)
     thick = {"sz": 12, "val": "single", "color": "000000"}
@@ -94,6 +110,8 @@ def results_to_docx(results: list[Result], path: str, include_methods=True):
                 p = doc.add_paragraph("⚠ " + b.content)
                 p.runs[0].font.color.rgb = RGBColor(0xB0, 0x60, 0x00)
             elif b.kind == "interpret":
+                if str(b.content.get("en", "")).startswith("Smart advisor — design diagnosis"):
+                    continue      # the advisor's decision log belongs to the screen, not to the manuscript
                 il = getattr(SETTINGS, "interp_lang", "same")
                 langs = [SETTINGS.language] if il == "same" else (["en", "ar"] if il == "both" else [il])
                 for lg in langs:
@@ -116,14 +134,27 @@ def results_to_docx(results: list[Result], path: str, include_methods=True):
             elif b.kind == "table":
                 tcount += 1
                 df = Result.format_df(b.content, b.p_columns)
+                sig = significant_cells(b.content, b.p_columns)
                 show_index = not isinstance(df.index, pd.RangeIndex)
                 if show_index:
                     df = df.reset_index()
+                    sig = {(i, j + 1) for i, j in sig}
+                if signature:
+                    cap = doc.add_paragraph()
+                    cap.paragraph_format.space_before = Pt(12)
+                    r = cap.add_run(f"Table {tcount}. "); r.bold = True; r.font.color.rgb = RGBColor(0xC8, 0x36, 0x4B)
+                    cap.add_run(b.caption or "").bold = True
+                    cap.paragraph_format.keep_with_next = True
+                    _signature_table(doc, df, sig)
+                    if b.note:
+                        p = doc.add_paragraph()
+                        rn = p.add_run("Note. "); rn.italic = True; rn.font.size = Pt(9)
+                        p.add_run(b.note).font.size = Pt(9)
+                    continue
                 cap = doc.add_paragraph()
                 cap.add_run(f"Table {tcount}").bold = True
                 doc.add_paragraph().add_run(b.caption or "").italic = True
                 t = doc.add_table(rows=len(df) + 1, cols=len(df.columns))
-                from ..core.result import _spss
                 spss = _spss()
                 grid = {"val": "single", "sz": 4, "color": "9AA5B1"}
                 for j, c in enumerate(df.columns):
@@ -145,12 +176,15 @@ def results_to_docx(results: list[Result], path: str, include_methods=True):
                         else:
                             _set_cell_border(cell, top=none, left=none, right=none,
                                              bottom=thick if i == len(df) - 1 else none)
-                for row in t.rows:
+                for i_r, row in enumerate(t.rows):
                     for j, cell in enumerate(row.cells):
                         for par in cell.paragraphs:
                             par.alignment = WD_ALIGN_PARAGRAPH.LEFT if j == 0 else WD_ALIGN_PARAGRAPH.CENTER
                             for run in par.runs:
                                 run.font.size = Pt(9.5)
+                                if i_r and (i_r - 1, j) in sig:
+                                    run.bold = True
+                _fit_columns(t, df)
                 if b.note:
                     p = doc.add_paragraph()
                     p.add_run("Note. ").italic = True
@@ -158,14 +192,103 @@ def results_to_docx(results: list[Result], path: str, include_methods=True):
             elif b.kind == "figure":
                 fcount += 1
                 png = fig_to_png_bytes(b.content, dpi=300)
-                doc.add_picture(io.BytesIO(png), width=Mm(150))
+                w_mm = min(160, max(85, b.content.get_size_inches()[0] * 25.4 * 1.05))
+                doc.add_picture(io.BytesIO(png), width=Mm(w_mm))
+                doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                doc.paragraphs[-1].paragraph_format.keep_with_next = True
                 p = doc.add_paragraph()
-                p.add_run(f"Figure {fcount}. ").bold = True
-                p.add_run(b.caption)
+                r = p.add_run(f"Figure {fcount}. "); r.bold = True
+                if signature:
+                    r.font.color.rgb = RGBColor(0xC8, 0x36, 0x4B)
+                p.add_run(b.caption).font.size = Pt(10)
         doc.add_paragraph()
     p = doc.add_paragraph(f"Analyses performed with {APP_NAME} {APP_VERSION}.")
     p.runs[0].font.size = Pt(8)
     doc.save(path)
+
+
+def _fit_columns(t, df):
+    """Column widths proportional to the longest entry (first column never squeezed), so short numbers do not wrap."""
+    from docx.shared import Mm
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    total = 170.0
+    cw, pad = 1.75, 3.6          # mm per character at 9 pt, cell padding
+
+    def tokens(j):
+        vals = [str(df.columns[j])] + [str(v) for v in df.iloc[:, j].tolist()]
+        return vals, [w for v in vals for w in v.split()]
+    mins, prefs = [], []
+    for j in range(len(df.columns)):
+        vals, words = tokens(j)
+        hw = max((len(w) for w in str(df.columns[j]).split()), default=0) * 1.18     # bold header text is wider
+        mins.append(max([len(w) for w in words] + [hw]) * cw + pad if words else 8)    # words are never split
+        prefs.append(max([len(v) for v in vals] + [len(str(df.columns[j])) * 1.18]) * cw + pad)
+    if sum(mins) >= total:
+        widths = [m * total / sum(mins) for m in mins]
+    else:
+        extra = total - sum(mins)
+        want = [max(p_ - m, 0) for p_, m in zip(prefs, mins)]
+        if sum(want) <= extra:
+            widths = [m + w for m, w in zip(mins, want)]
+            spare = total - sum(widths)
+            widths = [w_ + spare * w_ / sum(widths) for w_ in widths]
+        else:
+            widths = [m + extra * w / sum(want) for m, w in zip(mins, want)]
+    t.autofit = False
+    tblPr = t._tbl.tblPr
+    lay = OxmlElement("w:tblLayout"); lay.set(qn("w:type"), "fixed"); tblPr.append(lay)
+    tw = OxmlElement("w:tblW"); tw.set(qn("w:w"), str(int(total / 25.4 * 1440))); tw.set(qn("w:type"), "dxa"); tblPr.append(tw)
+    for j, gc in enumerate(t._tbl.tblGrid.findall(qn("w:gridCol"))):     # Word and LibreOffice read the grid
+        gc.set(qn("w:w"), str(int(widths[j] / 25.4 * 1440)))
+    for j, col in enumerate(t.columns):
+        col.width = Mm(widths[j])
+    for row in t.rows:
+        for j, cell in enumerate(row.cells):
+            cell.width = Mm(widths[j])
+
+
+def _signature_table(doc, df, sig):
+    """MedStatix Signature table for Word: indigo header band with a crimson rule, light zebra rows, an indigo closing
+    rule, first column in semibold indigo, significant p values in bold crimson."""
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Pt, RGBColor
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    ink, indigo, crimson = RGBColor(0x1D, 0x24, 0x33), RGBColor(0x26, 0x35, 0x5D), RGBColor(0xB0, 0x23, 0x3A)
+    none = {"val": "nil"}
+    hair = {"sz": 4, "val": "single", "color": "E3E8EF"}
+    t = doc.add_table(rows=len(df) + 1, cols=len(df.columns))
+    for j, c in enumerate(df.columns):
+        cell = t.cell(0, j); cell.text = ""
+        run = cell.paragraphs[0].add_run(str(c)); run.bold = True; run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        _shade(cell, "26355D")
+        _set_cell_border(cell, top=none, left=none, right=none, bottom={"sz": 12, "val": "single", "color": "C8364B"})
+    for i in range(len(df)):
+        last = i == len(df) - 1
+        for j in range(len(df.columns)):
+            cell = t.cell(i + 1, j); cell.text = ""
+            run = cell.paragraphs[0].add_run(str(df.iat[i, j]))
+            if j == 0:
+                run.bold = True; run.font.color.rgb = indigo
+            elif (i, j) in sig:
+                run.bold = True; run.font.color.rgb = crimson
+            else:
+                run.font.color.rgb = ink
+            if i % 2 == 1:
+                _shade(cell, "F5F7FA")
+            _set_cell_border(cell, top=none, left=none, right=none,
+                             bottom={"sz": 12, "val": "single", "color": "26355D"} if last else hair)
+    for row in t.rows:
+        trPr = row._tr.get_or_add_trPr(); cant = OxmlElement("w:cantSplit"); trPr.append(cant)
+        for j, cell in enumerate(row.cells):
+            for par in cell.paragraphs:
+                par.alignment = WD_ALIGN_PARAGRAPH.LEFT if j == 0 else WD_ALIGN_PARAGRAPH.CENTER
+                par.paragraph_format.space_before = Pt(1.5); par.paragraph_format.space_after = Pt(1.5)
+                for run in par.runs:
+                    run.font.size = Pt(9); run.font.name = "Calibri"
+    _fit_columns(t, df)
+    return t
 
 
 def results_to_xlsx(results: list[Result], path: str):

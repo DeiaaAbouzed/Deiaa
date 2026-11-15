@@ -173,3 +173,59 @@ def test_scale_bar_dialog_offscreen():
     sc = QGraphicsScene()
     grp, um = scale_bar_item(sc, img.shape, v)
     assert um == IC.nice_bar_um(img.shape[1], 0.5) and len(grp.childItems()) == 3
+
+
+def _apo_like():
+    import pandas as pd
+    rng = np.random.default_rng(5)
+    groups = ["Control", "Toxin", "Toxin + Drug 50", "Toxin + Drug 100"]
+    mu = {"Control": (0.5, 2.5), "Toxin": (1.5, 1.0), "Toxin + Drug 50": (0.9, 1.8), "Toxin + Drug 100": (0.6, 2.2)}
+    rows = [{"Group": g, "Bax": rng.normal(mu[g][0], 0.08), "Bcl2": rng.normal(mu[g][1], 0.2)} for g in groups for _ in range(8)]
+    return pd.DataFrame(rows)
+
+
+def test_groups_keep_design_order():
+    from medstatix.core.data import _level_order
+    import pandas as pd
+    assert _level_order(pd.Series(["Control", "Toxin", "Toxin + Drug", "Control"])) == ["Control", "Toxin", "Toxin + Drug"]
+    assert _level_order(pd.Series([10, 2, 1, 2])) == [1, 2, 10]
+
+
+def test_journal_table_and_panels():
+    from medstatix.analyses import run
+    r = run("journal_table", _apo_like(), variables=["Bax", "Bcl2"], group="Group")
+    tab = r.tables[0].content
+    assert list(tab["Group"])[:4] == ["Control", "Toxin", "Toxin + Drug 50", "Toxin + Drug 100"]
+    assert tab.loc[1, "Bax"].endswith("****") and "#" in tab.loc[2, "Bax"] and "±" in tab.loc[0, "Bax"]
+    assert "versus Control" in r.tables[0].note and "versus Toxin" in r.tables[0].note
+    fig = r.figures[0].content
+    assert len([a for a in fig.axes if a.get_visible()]) == 2 and "(A) Bax" in r.figures[0].caption
+
+
+def test_signature_outputs(tmp_path):
+    pytest.importorskip("docx")
+    from medstatix.core.settings import SETTINGS
+    from medstatix.analyses import run
+    from medstatix.report.export import results_to_docx
+    old = SETTINGS.table_style
+    try:
+        SETTINGS.table_style = "Signature"
+        r = run("anova1", _apo_like(), outcome="Bax", group="Group")
+        html = r.to_html(embed_figures=False)
+        assert 'class="sig"' in html and "psig" in html
+        assert "one-way anova (f(3, 28)" in r.figures[0].caption.lower()
+        p = tmp_path / "r.docx"
+        results_to_docx([r], str(p))
+        from docx import Document
+        d = Document(str(p))
+        assert d.tables and d.tables[0].rows[0].cells[0].text == "Group"
+        assert not any(par.text.startswith("Interpretation: Smart advisor") for par in d.paragraphs)
+    finally:
+        SETTINGS.table_style = old
+
+
+def test_correlation_caption_complete():
+    from medstatix.analyses import run
+    r = run("correlation", _apo_like(), variables=["Bax", "Bcl2"], method="Pearson")
+    cap = r.figures[0].caption
+    assert "95% CI" in cap and "n = 32" in cap and "r²" in cap

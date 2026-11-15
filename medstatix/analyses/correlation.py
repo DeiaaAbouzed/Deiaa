@@ -71,9 +71,14 @@ def correlation(df, variables, method="Pearson", adjust="None"):
     res.interpret("\n".join(en[:12] + en[-1:]), "\n".join(ar[:12] + ar[-1:]))
     if k == 2:
         sub = d.dropna()
+        r0 = rows[0]
+        rs = sym.split()[0]
         res.figure(F.scatter_fit(sub.iloc[:, 0], sub.iloc[:, 1], variables[0], variables[1],
-                                 annotate=f"{sym.split()[0]} = {rows[0]['r']:.2f}, {pstr(rows[0]['p'])}"),
-                   f"Scatter plot with least-squares line and 95% confidence band.")
+                                 annotate=f"{rs} = {r0['r']:.2f}, {pstr(r0['p'])}\nn = {len(sub)}".replace("-", "−")),
+                   f"Relationship between {variables[1]} and {variables[0]} (n = {len(sub)} pairs). Dots are individual "
+                   f"values; the line is the least-squares fit with its 95% confidence band. {method} {rs} = {r0['r']:.2f} "
+                   f"(95% CI {r0['95% CI lower']:.2f} to {r0['95% CI upper']:.2f}), {pstr(r0['p'])}"
+                   + (f"; r² = {r0['r'] ** 2:.2f}." if method == "Pearson" else "."))
     else:
         res.figure(F.heatmap(R, variables, f"{method} correlation matrix", annot_p=Pm), "Correlation heatmap (*p < 0.05).")
     res.methods(f"Associations were assessed with {method}'s correlation coefficient{' (data not normally distributed)' if method != 'Pearson' else ''}, "

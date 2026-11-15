@@ -202,13 +202,14 @@ def visible_comparisons(spec: GroupFigSpec):
 
 
 # --------------------------------------------------------------------------- render
-def render(spec: GroupFigSpec):
+def render(spec: GroupFigSpec, ax=None):
+    """Draw the figure; with `ax` the plot is drawn into an existing axes (multi-panel figures)."""
     from matplotlib.figure import Figure
-    from .figures import style_rc, palette
+    from .figures import style_rc, group_colours
 
     labels = list(spec.groups)
     k = len(labels)
-    pal = palette(k)
+    pal = group_colours(labels)
     colors = [spec.colors.get(l, pal[i]) for i, l in enumerate(labels)]
     plot_type = spec.plot_type or SETTINGS.group_plot
     err_kind = spec.error_bar or SETTINGS.error_bar
@@ -232,9 +233,14 @@ def render(spec: GroupFigSpec):
     text_lines = 2 if spec.sig_style == "Stars + exact p" else 1
     level_mm = (fs * 0.3528) * (1.25 + 0.95 * (text_lines - 1)) + 1.2      # text height + gap, in mm
     height = spec.height_mm or max(SETTINGS.fig_height_mm, 70, width * 0.62, 55 + n_levels * level_mm * 1.15)
+    external = ax is not None
     with mpl.rc_context(rc):
-        fig = Figure(figsize=(width * MM, height * MM))
-        ax = fig.add_subplot(111)
+        if external:
+            fig = ax.figure
+            height = ax.get_position().height * fig.get_size_inches()[1] / MM / 0.62   # so that axis_mm = axes height
+        else:
+            fig = Figure(figsize=(width * MM, height * MM))
+            ax = fig.add_subplot(111)
         tops = []
         show_points = plot_type not in ("Bar (no points)", "Mean ± error only")
         for i, (lab, v, c) in enumerate(zip(labels, arrs, colors)):
@@ -274,8 +280,10 @@ def render(spec: GroupFigSpec):
             if show_points:
                 xo = swarm_offsets(v, rng, max_width=min(0.34, spec.bar_width * 0.55),
                                    point_frac=0.022 * spec.point_size / 6)
+                sig = SETTINGS.fig_style == "Signature"
                 ax.scatter(i + xo, v, s=spec.point_size ** 2, marker=spec.marker, color=c,
-                           edgecolor=_darker(c) if spec.point_edge else "none", linewidth=0.7, zorder=3, alpha=0.95)
+                           edgecolor=("white" if sig else _darker(c)) if spec.point_edge else "none",
+                           linewidth=0.8 if sig else 0.7, zorder=3, alpha=1.0 if sig else 0.95)
             tops.append(top)
         if spec.paired and k >= 2 and len({len(a) for a in arrs}) == 1:
             for row in zip(*[np.asarray(spec.groups[l], float) for l in labels]):
@@ -353,8 +361,47 @@ def render(spec: GroupFigSpec):
         if spec.y_min is not None or spec.y_max is not None:
             ax.set_ylim(spec.y_min if spec.y_min is not None else ax.get_ylim()[0],
                         spec.y_max if spec.y_max is not None else ax.get_ylim()[1])
+        if external:
+            return ax
         fig.tight_layout()
     fig._mx_spec = spec
+    return fig
+
+
+def render_panels(specs: list, ncols=None, letters=True):
+    """Several group figures side by side in one publication figure, labelled A, B, C… (vector, editable fonts)."""
+    from matplotlib.figure import Figure
+    from .figures import style_rc
+    n = len(specs)
+    ncols = ncols or min(3, n)
+    nrows = math.ceil(n / ncols)
+    k = max(len(sp.groups) for sp in specs)
+    w_panel = max(62.0, 24 + 15 * k)
+    longest = max(len(str(l)) for sp in specs for l in sp.groups)
+    rot = k > 3 and longest > 9
+    h_panel = max(62.0, w_panel * 0.85) + (min(longest, 30) * 1.3 if rot else 8)   # room for slanted group names
+    with mpl.rc_context(style_rc()):
+        fig = Figure(figsize=(w_panel * ncols * MM, h_panel * nrows * MM))
+        axes = fig.subplots(nrows, ncols, squeeze=False)
+        for i, sp in enumerate(specs):
+            ax = axes[i // ncols][i % ncols]
+            sp2 = sp.copy(); sp2.xlabel = ""; sp2.label_mode = "Rotate 45°" if rot else sp2.label_mode
+            render(sp2, ax=ax)
+        for j in range(n, nrows * ncols):
+            axes[j // ncols][j % ncols].axis("off")
+        fig.tight_layout(w_pad=2.5, h_pad=2.5, rect=(0, 0, 1, 0.97))
+        if letters:   # panel letters above the y-axis label, aligned on the left edge of each panel
+            from matplotlib.backends.backend_agg import FigureCanvasAgg
+            canvas = fig.canvas if hasattr(fig.canvas, "get_renderer") else FigureCanvasAgg(fig)
+            canvas.draw()
+            r = canvas.get_renderer()
+            for i in range(n):
+                ax = axes[i // ncols][i % ncols]
+                x0 = min(ax.yaxis.label.get_window_extent(r).x0, ax.get_window_extent(r).x0) / fig.bbox.width
+                y1 = ax.get_position().y1
+                fig.text(max(x0 - 0.005, 0.002), min(y1 + 0.03, 0.995), chr(65 + i), fontsize=(specs[i].font_size or SETTINGS.font_size) + 5,
+                         fontweight="bold", va="top", ha="left")
+    fig._mx_panels = specs
     return fig
 
 

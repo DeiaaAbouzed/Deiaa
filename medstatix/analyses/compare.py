@@ -78,7 +78,7 @@ def ttest_ind(df, outcome, group, alternative="two-sided"):
                 f"Shapiro-Wilk test and homogeneity of variance with Levene's test. {n1} vs {n2}: t({we.df:.1f}) = {we.statistic:.2f}, "
                 f"{pstr(we.pvalue)}, mean difference = {diff:.2f} (95% CI {ci_w.low:.2f} to {ci_w.high:.2f}), d = {d:.2f}.")
     res.figure_auto(F.group_plot(g, ylabel=outcome, xlabel=group, comparisons=[(n1, n2, we.pvalue)],
-                                 test_name=f"Welch's t-test ({pstr(we.pvalue)})"))
+                                 test_name=f"Welch's t-test (t({we.df:.1f}) = {we.statistic:.2f}, {pstr(we.pvalue)}; Cohen's d = {d:.2f})"))
     return res
 
 
@@ -181,7 +181,7 @@ def mannwhitney(df, outcome, group, alternative="two-sided"):
     res.methods(f"Because {outcome} was not normally distributed, groups were compared with the two-tailed Mann-Whitney U test; "
                 f"data are presented as median (IQR). U = {U:.1f}, {pstr(r.pvalue)}, rank-biserial r = {rbc:.2f}.")
     res.figure_auto(F.group_plot(g, ylabel=outcome, xlabel=group, comparisons=[(n1, n2, r.pvalue)], plot_type="Box + points",
-                                 center="median", test_name=f"Mann-Whitney U test ({pstr(r.pvalue)})"))
+                                 center="median", test_name=f"two-tailed Mann-Whitney U test (U = {U:.1f}, {pstr(r.pvalue)}; rank-biserial r = {rbc:.2f})"))
     return res
 
 
@@ -360,10 +360,12 @@ def anova1(df, outcome, group, posthoc="Tukey HSD"):
     s = sig_words(mainp)
     mag = magnitude_eta(eta2)
     sig_pairs = [f"{a} vs {b}" for a, b, _ in comps]
-    en = (f"{'Welch' if lev.pvalue < 0.05 else 'One-way'} ANOVA indicates that {outcome} differs among the {k} groups: {s[0]} "
-          f"(F({dfb}, {dfw}) = {Fv:.2f}, {pstr(p)}; Welch {pstr(pw)}). η² = {eta2:.3f} ({mag[0]} effect: "
+    welch = lev.pvalue < 0.05
+    omni = (f"Welch's F({dfb}, {df2w:.1f}) = {Fw:.2f}, {pstr(pw)}" if welch else f"F({dfb}, {dfw}) = {Fv:.2f}, {pstr(p)}")
+    en = (f"{'Welch' if welch else 'One-way'} ANOVA indicates that {outcome} differs among the {k} groups: {s[0]} "
+          f"({omni}). η² = {eta2:.3f} ({mag[0]} effect: "
           f"{eta2*100:.1f}% of variance explained by {group}). ")
-    ar = (f"يشير تحليل التباين إلى أن الاختلاف في {outcome} بين المجموعات الـ{k} {s[1]} (F = {Fv:.2f}، {pstr(p)}). "
+    ar = (f"يشير {'تحليل تباين ويلش' if welch else 'تحليل التباين'} إلى أن الاختلاف في {outcome} بين المجموعات الـ{k} {s[1]} ({omni}). "
           f"حجم الأثر η² = {eta2:.3f} ({mag[1]}) أي أن {eta2*100:.1f}% من التباين يُعزى إلى {group}. ")
     if sig_pairs:
         en += "Significant pairwise differences: " + "; ".join(sig_pairs) + "."
@@ -375,12 +377,14 @@ def anova1(df, outcome, group, posthoc="Tukey HSD"):
         en += " Normality is doubtful; confirm with Kruskal-Wallis."
         ar += " التوزيع الطبيعي مشكوك فيه؛ أكّد النتيجة باختبار كروسكال-واليس."
     res.interpret(en, ar)
-    res.methods(f"Differences among groups were analysed by one-way ANOVA followed by {method} post hoc test. Assumptions were "
-                f"checked with Shapiro-Wilk (normality) and Levene's test (homogeneity of variance); Welch's ANOVA was computed "
-                f"as a robust alternative. F({dfb}, {dfw}) = {Fv:.2f}, {pstr(p)}, η² = {eta2:.3f}. P < 0.05 was considered significant.")
     shown = tab2 if (lev.pvalue < 0.05 and posthoc == "Tukey HSD") else tab
     used = "Games-Howell" if shown is not tab else method
-    _tn = f"one-way ANOVA followed by {used} post hoc test" if used != "None" else "one-way ANOVA"
+    an = "Welch's one-way ANOVA" if welch else "one-way ANOVA"
+    res.methods(f"Data are presented as mean ± SD. Differences among groups were analysed by {an} followed by {used} post hoc "
+                f"test. Normality was checked with the Shapiro-Wilk test and homogeneity of variance with Levene's test"
+                + (f" (variances unequal: Levene {pstr(lev.pvalue)})" if welch else "")
+                + f". {omni[0].upper() + omni[1:]}, η² = {eta2:.3f}. P < 0.05 was considered significant.")
+    _tn = (f"{an} ({omni}) followed by {used} post hoc test" if used != "None" else f"{an} ({omni})")
     res.figure_auto(F.group_plot(g, ylabel=outcome, xlabel=group, comparisons=shown.attrs.get("all_pairs", comps) if len(shown) else [],
                                  test_name=_tn))
     return res
@@ -437,7 +441,7 @@ def kruskal(df, outcome, group, adjust="Holm"):
                 f"data are median (IQR). H({k-1}) = {H:.2f}, {pstr(p)}.")
     res.figure_auto(F.group_plot(g, ylabel=outcome, xlabel=group, center="median", plot_type="Box + points",
                                  comparisons=[(r["Group A"], r["Group B"], r["p (adj.)"]) for _, r in tab.iterrows()],
-                                 test_name=f"Kruskal-Wallis test followed by Dunn's test ({adjust} adjustment)"))
+                                 test_name=f"Kruskal-Wallis test (H({k-1}) = {H:.2f}, {pstr(p)}) followed by Dunn's test ({adjust} adjustment)"))
     return res
 
 

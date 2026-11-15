@@ -6,8 +6,8 @@ from dataclasses import dataclass, asdict
 class Settings:
     language: str = "ar"            # ar | en
     theme: str = "light"            # light | dark
-    fig_style: str = "Prism"        # Prism | Classic | Nature | ggplot | Minimal
-    palette: str = "Prism"          # Prism | Okabe-Ito | Grayscale | NEJM | Lancet | Pastel
+    fig_style: str = "Signature"    # Signature | Prism | Classic | Nature | ggplot | Minimal
+    palette: str = "MedStatix Signature"  # MedStatix Signature | Prism | Okabe-Ito | Grayscale | NEJM | Lancet | Pastel
     group_plot: str = "Scatter + mean ± SD"  # see plots.GROUP_PLOT_TYPES
     error_bar: str = "SD"           # SD | SEM | 95% CI
     font_family: str = "Arial"
@@ -19,7 +19,7 @@ class Settings:
     alpha: float = 0.05
     decimals: int = 3
     journal: str = ""               # target journal preset ("" = none), see report/journals.py
-    table_style: str = "APA"        # APA | SPSS
+    table_style: str = "Signature"  # Signature | APA | SPSS
     auto_fallback: bool = True      # add the non-parametric alternative when assumptions fail
     ai_user_model: bool = True      # use the nucleus classifier fine-tuned on the user's own slides when present
     check_updates: bool = True      # check GitHub releases at startup

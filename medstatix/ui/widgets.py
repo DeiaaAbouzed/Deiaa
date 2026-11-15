@@ -354,9 +354,11 @@ class SettingsDialog(QDialog):
         lay.addWidget(g2)
         ar = SETTINGS.language == "ar"
         g3 = QGroupBox("المخرجات والاختبارات" if ar else "Output & tests"); f3 = QFormLayout(g3)
-        self.tstyle = QComboBox(); self.tstyle.addItem("APA (للمجلات)" if ar else "APA (journal)", "APA")
+        self.tstyle = QComboBox()
+        self.tstyle.addItem("MedStatix Signature (هوية البرنامج)" if ar else "MedStatix Signature", "Signature")
+        self.tstyle.addItem("APA (للمجلات)" if ar else "APA (journal)", "APA")
         self.tstyle.addItem("SPSS (جداول بنمط SPSS)" if ar else "SPSS-style tables", "SPSS")
-        self.tstyle.setCurrentIndex(1 if SETTINGS.table_style == "SPSS" else 0)
+        self.tstyle.setCurrentIndex({"Signature": 0, "APA": 1, "SPSS": 2}.get(SETTINGS.table_style, 0))
         self.fallback = QCheckBox("عند فشل الافتراضات أضف الاختبار اللامعلمي تلقائياً مع الشرح" if ar else
                                   "When assumptions fail, add the non-parametric test automatically, with an explanation")
         self.fallback.setChecked(SETTINGS.auto_fallback)

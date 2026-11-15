@@ -130,10 +130,11 @@ def _level_order(s: pd.Series):
     if isinstance(s.dtype, pd.CategoricalDtype):
         return [c for c in s.cat.categories if c in set(s.dropna())]
     vals = s.dropna().unique().tolist()
-    try:
+    # numbers (doses, times, scores) are sorted; text groups keep the order of the experimental design, i.e. the order
+    # in which they first appear in the data (Control, Toxin, Toxin + Drug…), as GraphPad Prism does
+    if all(isinstance(v, (int, float, np.integer, np.floating)) and not isinstance(v, bool) for v in vals):
         return sorted(vals)
-    except TypeError:
-        return vals
+    return vals
 
 
 def binary01(df: pd.DataFrame, col: str, positive=None) -> tuple[pd.Series, str]:
