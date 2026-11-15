@@ -18,6 +18,14 @@ N_RAYS = 32
 GRID = 2
 DIV = 16
 REF_AREA = 220.0   # typical median nucleus area (px²) in the training data (40×, ~0.25 µm/px)
+REF_UM_PER_PX = 0.25   # resolution of the training images (40× objective)
+MAX_PIXELS = 16_000_000
+
+
+def scale_for(um_per_px, shape):
+    """Working scale for a calibrated image: brings it to the training resolution, within the memory budget."""
+    s = um_per_px / REF_UM_PER_PX
+    return float(np.clip(s, 0.5, min(5.0, math.sqrt(MAX_PIXELS / (shape[0] * shape[1])))))
 CITATION = ("Schmidt U, Weigert M, Broaddus C, Myers G. Cell detection with star-convex polygons. MICCAI 2018; "
             "Weigert M, Schmidt U, Haase R, Sugawara K, Myers G. Star-convex polyhedra for 3D object detection and "
             "segmentation in microscopy. WACV 2020.")
@@ -86,10 +94,14 @@ def _polys(points, dist):
     return ys, xs
 
 
-def nms(prob, dist, shape, prob_thresh=PROB_THRESH, nms_thresh=NMS_THRESH, b=2):
+def nms(prob, dist, shape, prob_thresh=PROB_THRESH, nms_thresh=NMS_THRESH, b=2, fast=True):
     """Greedy NMS on rasterised star-convex polygons. Returns label image and list of nuclei (highest prob first)."""
     from skimage.draw import polygon as draw_polygon
     mask = prob > prob_thresh
+    if fast:
+        # only local maxima of the probability map become candidates: the same nuclei, ~5–10× fewer polygons to rasterise
+        from scipy.ndimage import maximum_filter
+        mask &= prob >= maximum_filter(prob, size=3)
     if b:
         m2 = np.zeros_like(mask); m2[b:-b, b:-b] = True; mask &= m2
     pts = np.argwhere(mask)

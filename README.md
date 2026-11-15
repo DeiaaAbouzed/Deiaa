@@ -39,6 +39,14 @@ MedStatix Pro brings together what researchers usually spread across SPSS, Graph
 | Charts | Heatmap, volcano, radar, Kaplan–Meier, forest |
 | Sample size | **G*Power-style a priori / post hoc / sensitivity**, t-tests, proportions, ANOVA, correlation, log-rank (Schoenfeld), diagnostic sensitivity (Buderer), Mead's resource equation for animal studies |
 
+## New in v1.6: AI reader for rodent tissue
+
+- **Calibration from the figure itself**: the scale bar drawn on a photomicrograph is found, its length measured and its label read (5–1000 µm); nuclei are then detected at the model's working resolution (0.25 µm/px). At 10× and 20× this finds 5–40 times more nuclei than v1.5.
+- **Drawn marks are ignored**: arrows, arrowheads, stars, letters and the scale-bar box are masked out of every measurement, and one-click enhancement keeps them unchanged (disclosed in the methods text).
+- **Tissue profiles**: *Rat/mouse kidney*, *Other rodent tissue* and *Human/other*. The rodent profiles add a calibrated inflammatory-cell filter (logistic model on the built-in probability and the local density of dark nuclei) trained on 22 rat kidney and skeletal-muscle H&E images with weak labels (the pathologist's arrows and "normal" legends). Leave-one-image-out: AUC 0.86 vs 0.81; false positives in normal muscle ~2 vs ~690 per mm², in normal kidney ~450 vs ~3300 per mm²; recall at the arrows 0.53–0.55 vs 0.87–0.90. Only the model weights are distributed, never the images.
+- **Glomeruli** (kidney profile, ≥ 20×): recognised from Bowman's space; tuft and Bowman's space areas are reported and glomerular nuclei are excluded from the inflammatory cells.
+- **Smart advisor**: histopathological lesion scores (integer grades) are analysed with Kruskal–Wallis + Dunn (or Mann–Whitney), reported as median (IQR), instead of chi-square; with unequal variances, normality is judged on group-standardised residuals and Welch ANOVA + Games–Howell is used.
+
 ## New in v1.5
 
 - **SPSS and GraphPad Prism files:** open and save `.sav` (value labels and variable labels are kept) and `.pzfx` (Column, Grouped, XY and summary-data tables; one Prism Column table per outcome on export).

@@ -44,10 +44,10 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: medstatix-v1.5.0
-          name: MedStatix Pro 1.5.0 (Windows)
+          tag_name: medstatix-v1.6.0
+          name: MedStatix Pro 1.6.0 (Windows)
           target_commitish: ${{ github.sha }}
-          body: "MedStatix Pro 1.5.0 – Opens and saves SPSS (.sav, with value and variable labels) and GraphPad Prism (.pzfx) files; SPSS-style output tables (Settings); a Word validation report against R, SPSS-equivalent formulas, metafor, BayesFactor and G*Power (53 checks); Bayesian t-test, correlation and ANOVA (JZS Bayes factors); G*Power-style a priori, post hoc and sensitivity power analysis with the distribution plot; chart library (heatmap, volcano, radar, Kaplan–Meier, forest); automatic assumption checks that add the non-parametric test with an explanation; R bridge (verify the last analysis in R, R console); Photopea round trip with a check that only labels were added; duplicate / re-used image and copy-move detector; offline Arabic/English analysis assistant; teach the AI reader on your own slides (label nuclei, fine-tune with grouped cross-validation); in-app update. Windows installer (MedStatixPro-Setup-1.5.0.exe) and portable ZIP."
+          body: "MedStatix Pro 1.6.0 – AI image reader for rodent tissue: automatic calibration from the scale bar drawn on the figure (µm per pixel read from the bar and its label) and detection at the model's working resolution; arrows, arrowheads, stars, letters and the scale-bar box are ignored by every measurement; tissue profiles (rat/mouse kidney, other rodent tissue, human) with a calibrated inflammatory-cell filter trained on rat kidney and skeletal-muscle H&E (held-out AUC 0.86 vs 0.81; false positives in normal muscle cut from ~690 to ~2 per mm²); glomerulus recognition in kidney (tuft and Bowman's space areas, glomerular nuclei excluded from inflammatory cells); one-click enhancement keeps drawn arrows and the white scale-bar box unchanged; smart advisor analyses histopathological lesion scores with Kruskal-Wallis/Dunn (median, IQR) and uses Welch ANOVA with Games-Howell when variances differ. Windows installer (MedStatixPro-Setup-1.6.0.exe) and portable ZIP."
           files: |
             dist/installer/*.exe
             dist/MedStatixPro-portable-win64.zip

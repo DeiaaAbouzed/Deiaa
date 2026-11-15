@@ -25,14 +25,21 @@ LABELS = {  # key: (English label for the figure, Arabic)
     "congestion": ("Congestion", "احتقان"),
     "vacuole": ("Vacuolation", "تفجّي (فجوات)"),
     "dab_pos": ("Positive (DAB) cells", "خلايا موجبة (DAB)"),
+    "glomerulus": ("Glomerulus", "كبيبة"),
 }
 COLOURS = {"inflammatory": "#00E5FF", "focus": "#FFD600", "congestion": "#FF4081", "vacuole": "#76FF03",
-           "dab_pos": "#FF6D00", "epithelial": "#B388FF", "spindle": "#69F0AE"}
+           "dab_pos": "#FF6D00", "epithelial": "#B388FF", "spindle": "#69F0AE", "glomerular": "#FFAB40", "glomerulus": "#FFAB40"}
 METHOD_TEXT = ("Nuclei were detected with the pretrained StarDist 2D 'versatile H&E' deep-learning model (Schmidt et al., "
                "2018) and classified as inflammatory, epithelial, spindle-shaped or other by a neural-network classifier "
                "trained on the CoNSeP dataset (Graham et al., 2019), run in MedStatix Pro on the native-colour image. "
                "Groups of ≥{min_focus} inflammatory nuclei within {eps_um} µm of each other were proposed as inflammatory "
                "foci. All automated suggestions were reviewed and confirmed or rejected by the investigator before counting.")
+
+GATE_TEXT = (" Because the classifier was trained on human tissue, inflammatory-cell suggestions were re-scored for rodent "
+             "tissue with a logistic gate that combines the classifier score with the local density of dark nuclei and the "
+             "nuclear size in µm (validated image by image on rat kidney and skeletal-muscle sections); in kidney, nuclei "
+             "inside automatically recognised glomeruli were excluded.")
+CALIB_TEXT = " The image was calibrated from its scale bar ({px:.3f} µm per pixel)."
 
 
 def _clusters(pts, eps, min_pts):
@@ -140,17 +147,35 @@ def _dab_thresholds(d):
     return (n0 + 0.012, n0 + 0.03, n0 + 0.05)
 
 
-def read_image(img, px_um=0.0, stain="auto", min_conf=0.65, min_focus=8, focus_um=12.0, dab="auto", vacuoles=False):
+PROFILES = ["general", "rodent", "rodent kidney"]
+
+
+def read_image(img, px_um=0.0, stain="auto", min_conf=0.65, min_focus=8, focus_um=12.0, dab="auto", vacuoles=False,
+               profile="general"):
     """Return dict: cells (list), foci, congestion regions, vacuoles, summary (dict of numbers), stain, scale."""
     img = np.ascontiguousarray(img[..., :3])
     H, W = img.shape[:2]
+    from . import marks as MK
+    mk = MK.find_marks(img)
+    calib = "user"
+    if not px_um and mk["scale_bar"] and mk["scale_bar"]["um_per_px"]:
+        px_um = mk["scale_bar"]["um_per_px"]; calib = "scale bar"
+    elif not px_um:
+        calib = "none"
     stain = IC.guess_stain(img) if stain == "auto" else ("IHC" if stain.startswith("IHC") else "H&E")
-    lab, nu, s, img_s, lab_s = NU.detect(img, scale="auto", prob_thresh=0.5, keep_scaled=True)
+    lab, nu, s, img_s, lab_s = NU.detect(img, scale=NU.scale_for(px_um, img.shape) if px_um else "auto", prob_thresh=0.5,
+                                         keep_scaled=True)
     if stain == "IHC":
         # strongly brown nuclei can be missed by an H&E-trained network: run it a second time on a hematoxylin-like
         # rendering (hematoxylin + DAB density) at the same scale and add the nuclei not already found
         _, nu2, _, _, lab2 = NU.detect(img, scale=s, prob_thresh=0.5, keep_scaled=True, detect_on=_hematoxylin_view(img))
         lab, nu, lab_s = _merge(lab_s, nu, lab2, nu2, s, img.shape[:2])
+    if mk["mask"].any() and nu:
+        # nuclei under drawn arrows, stars, letters or the scale-bar box are marks, not cells
+        keep = [i for i, n in enumerate(nu) if not mk["mask"][min(H - 1, int(n["y"])), min(W - 1, int(n["x"]))]]
+        if len(keep) < len(nu):
+            remap = np.zeros(len(nu) + 1, np.int32); remap[np.array(keep) + 1] = np.arange(1, len(keep) + 1)
+            lab = remap[lab]; lab_s = remap[lab_s]; nu = [nu[i] for i in keep]
     cells = []
     feats = []
     dab_used = None
@@ -176,6 +201,29 @@ def read_image(img, px_um=0.0, stain="auto", min_conf=0.65, min_focus=8, focus_u
                 d = float(dab_mean[i]); c["dab"] = d
                 c["grade"] = 3 if d >= dab_used[2] else 2 if d >= dab_used[1] else 1 if d >= dab_used[0] else 0
             cells.append(c); feats.append(X[i])
+    glom = []
+    if cells and stain == "H&E" and profile != "general":
+        from . import tissue_gate as TG
+        px_eff = px_um or 0.25 * s
+        if profile == "rodent kidney":
+            from . import structures as ST
+            glom, gmask = ST.glomeruli(img, cells, px_eff)
+        else:
+            gmask = None
+        if TG.available():
+            q = TG.score(np.array(feats), [[c["y"], c["x"]] for c in cells], px_eff, [c["p_infl"] for c in cells])
+            names = ["other", "inflammatory", "epithelial", "spindle"]
+            for c, qi, xi in zip(cells, q, feats):
+                in_glom = gmask is not None and gmask[min(H - 1, int(c["y"])), min(W - 1, int(c["x"]))]
+                c["p_infl_builtin"] = c["p_infl"]
+                c["p_infl"] = 0.0 if in_glom else float(qi)
+                if in_glom:
+                    c["type"], c["p"] = "glomerular", 1.0
+                elif c["p_infl"] >= 0.5:
+                    c["type"], c["p"] = "inflammatory", c["p_infl"]
+                elif c["type"] == "inflammatory":
+                    pp = CC.predict_proba(xi[None])[0]; pp[1] = -1
+                    k = int(pp.argmax()); c["type"], c["p"] = names[k], float(pp[k])
     n_cells = len(cells)
     med_area = float(np.median([c["area_px"] for c in cells])) if cells else 0.0
     # inflammatory cells (in IHC the classifier is less reliable: show only in H&E)
@@ -195,7 +243,7 @@ def read_image(img, px_um=0.0, stain="auto", min_conf=0.65, min_focus=8, focus_u
             conf = float(np.clip(np.mean([infl[i]["p"] for i in idx]) * min(1.0, len(idx) / (2 * min_focus) + 0.5), 0, 1))
             foci.append({"n": len(idx), "hull": hull, "conf": conf, "y": float(pts[idx, 0].mean()), "x": float(pts[idx, 1].mean())})
     # congestion and vacuoles
-    tissue = IC._tissue_mask(img, 0.85)
+    tissue = IC._tissue_mask(img, 0.85) & ~mk['mask']
     cong = []
     if stain == "H&E":
         _, rbc = IC.congestion_area(img)
@@ -224,6 +272,14 @@ def read_image(img, px_um=0.0, stain="auto", min_conf=0.65, min_focus=8, focus_u
         S["Vacuolated area % of tissue"] = 100 * sum(v["area"] for v in vac) / max(tissue.sum(), 1)
         if area_mm2:
             S["Inflammatory cells per mm²"] = len(infl) / area_mm2
+        if profile == "rodent kidney":
+            S["Glomeruli found"] = len(glom)
+            if glom:
+                S["Glomerular tuft area, mean (µm²)"] = float(np.mean([g["tuft_area_um2"] for g in glom]))
+                S["Bowman's space area, mean (µm²)"] = float(np.mean([g["bowman_area_um2"] for g in glom]))
+                S["Glomerular nuclei per tuft, mean"] = float(np.mean([sum(c["type"] == "glomerular" for c in cells)])) / len(glom)
+    if px_um:
+        S["Calibration (µm per pixel)"] = round(px_um, 4)
     if stain == "IHC" and cells:
         g = np.array([c["grade"] for c in cells])
         S["Positive nuclei %"] = 100 * (g > 0).mean()
@@ -234,7 +290,9 @@ def read_image(img, px_um=0.0, stain="auto", min_conf=0.65, min_focus=8, focus_u
         S["Tissue area (mm²)"] = area_mm2
     return {"stain": stain, "scale": s, "cells": cells, "inflammatory": infl, "foci": foci, "congestion": cong,
             "vacuoles": vac, "summary": S, "X": np.array(feats, np.float32).reshape(-1, len(CC.FEATURES)), "median_nucleus_px": med_area, "dab_thresholds": dab_used,
-            "methods": METHOD_TEXT.format(min_focus=min_focus, eps_um=int(focus_um))}
+            "methods": METHOD_TEXT.format(min_focus=min_focus, eps_um=int(focus_um)) + (GATE_TEXT if profile != "general" and stain == "H&E" else "")
+            + (CALIB_TEXT.format(px=px_um) if calib == "scale bar" else ""),
+            "px_um": px_um, "calibration": calib, "marks": mk, "glomeruli": glom, "profile": profile}
 
 
 def describe(r, ar=False):
@@ -265,6 +323,10 @@ def describe(r, ar=False):
             parts.append(f"توجد {nf} بؤرة ارتشاح التهابي محتملة (أكبرها {max(f['n'] for f in r['foci'])} خلية).")
         if cg >= 0.5:
             parts.append(f"مناطق غنية بكرات الدم الحمراء (احتقان/نزف محتمل) تمثل {cg:.1f}% من النسيج.")
+        if r.get("glomeruli"):
+            parts.append(f"تم التعرف على {len(r['glomeruli'])} كبيبة، واستُبعدت أنويتها من الخلايا الالتهابية.")
+        if r.get("calibration") == "scale bar":
+            parts.append(f"المعايرة من مقياس الرسم: {r['px_um']:.3f} ميكرومتر لكل بكسل.")
         if nv:
             parts.append(f"{nv} فجوة واضحة مستديرة (تفجّي أو دهون محتملة) تمثل {S['Vacuolated area % of tissue']:.1f}% من النسيج.")
         parts.append("هذه قراءة آلية مساعدة؛ راجع كل اقتراح قبل اعتماده، والتشخيص النهائي للباثولوجي.")
@@ -274,6 +336,10 @@ def describe(r, ar=False):
             parts.append(f"{nf} possible inflammatory infiltrate focus/foci (largest {max(f['n'] for f in r['foci'])} cells).")
         if cg >= 0.5:
             parts.append(f"RBC-rich areas (possible congestion/haemorrhage) cover {cg:.1f}% of the tissue.")
+        if r.get("glomeruli"):
+            parts.append(f"{len(r['glomeruli'])} glomeruli were recognised; their nuclei were excluded from the inflammatory cells.")
+        if r.get("calibration") == "scale bar":
+            parts.append(f"Calibrated from the scale bar: {r['px_um']:.3f} µm per pixel.")
         if nv:
             parts.append(f"{nv} clear round spaces (possible vacuolation / fat) cover {S['Vacuolated area % of tissue']:.1f}% of the tissue.")
         parts.append("This is an automated aid: review every suggestion before accepting it; the diagnosis rests with the pathologist.")

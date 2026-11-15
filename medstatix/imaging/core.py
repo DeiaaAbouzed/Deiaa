@@ -496,10 +496,16 @@ class EditLog:
     source: str = ""
     steps: list = field(default_factory=list)
     created: str = field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
+    marks_kept: int = 0
 
     def methods_text(self) -> str:
         if not self.steps:
             return "Images are presented without any processing."
+        return self._methods() + (" Annotation graphics already drawn on the figure (arrows, symbols, letters and the "
+                                  "scale-bar box; neutral black or white pixels only) were kept at their original values; "
+                                  "no tissue pixel was treated differently." if self.marks_kept else "")
+
+    def _methods(self) -> str:
         names = [OPS[s["op"]][0].split(" (")[0].lower() for s in self.steps]
         txt = ("Image adjustments were restricted to global operations applied equally to the entire image "
                f"({', '.join(names)}), using MedStatix Pro. No local editing, cloning, or generative/AI-based pixel "
@@ -1207,7 +1213,31 @@ def publication_ready(img: np.ndarray, stain: str = "auto", source: str = "auto"
                                               "radius": 0.8 if small else (1.4 if phone else 1.0)}})
     out, done, rep, steps = auto_enhance(img, steps)
     info = {"stain": preset_name, "source": "phone" if phone else "camera", "level": level, "cropped": bool(box)}
+    kept = keep_drawn_marks(img, out) if not box else 0
+    if kept:
+        out = out.copy()
+        info["marks_kept_px"] = kept
     return out, done, rep, steps, info
+
+
+def keep_drawn_marks(original: np.ndarray, out: np.ndarray) -> int:
+    """Arrows, stars, letters and the scale-bar box already drawn on a figure are graphics, not tissue: global tone
+    steps would turn the white label box grey and sharpening would add halos to black arrows. Their own pixels (and
+    nothing around them) are copied back from the original, in place. Returns the number of pixels kept."""
+    if original.shape != out.shape:
+        return 0
+    try:
+        from . import marks as MK
+        m = MK.find_marks(original, dilate=0)["mask"]
+    except Exception:
+        return 0
+    o = original[..., :3].astype(int)
+    m &= (o.max(2) - o.min(2)) < 40              # graphics are neutral black / white; stained tissue never is
+    frac = m.mean()
+    if not m.any() or frac > 0.08:
+        return 0
+    out[m] = original[m]
+    return int(m.sum())
 
 
 # ----------------------------------------------------------------------------- measurement & batch

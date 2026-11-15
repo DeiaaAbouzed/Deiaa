@@ -558,6 +558,17 @@ class HistologyStudio(QWidget):
                         "نموذج تعلّم عميق يحدد الأنوية، وشبكة ثانية تصنّفها (التهابية، طلائية، مغزلية)، ثم يقترح القارئ التسميات: "
                         "خلايا وبؤر التهابية، احتقان، فجوات، خلايا موجبة لـ DAB. كلها اقتراحات: احذف الخاطئ (تحديد ثم Delete) ثم اعتمد."))
         hint.setWordWrap(True); hint.setObjectName("hint"); f.addRow(hint)
+        self.ai_profile = QComboBox()
+        for lab, key in [(T("Rat / mouse kidney", "كلى فأر / جرذ"), "rodent kidney"),
+                         (T("Other rodent tissue (muscle, liver…)", "نسيج قوارض آخر (عضلات، كبد…)"), "rodent"),
+                         (T("Human / other (built-in model)", "بشري / آخر (النموذج الأصلي)"), "general")]:
+            self.ai_profile.addItem(lab, key)
+        self.ai_profile.setCurrentIndex(1)
+        self.ai_profile.setToolTip(T("Rodent profiles add a calibrated inflammatory-cell filter trained on rat kidney and muscle, "
+                                     "and (kidney) exclude glomerular nuclei.",
+                                     "ملفات القوارض تضيف مرشّحًا معايَرًا للخلايا الالتهابية مدرَّبًا على كلى وعضلات الجرذ، "
+                                     "وفي الكلى تستبعد أنوية الكبيبات."))
+        f.addRow(T("Tissue", "النسيج"), self.ai_profile)
         self.ai_conf = QSpinBox(); self.ai_conf.setRange(30, 95); self.ai_conf.setValue(65); self.ai_conf.setSuffix(" %")
         self.ai_conf.setToolTip(T("Minimum confidence of a suggestion", "أقل درجة ثقة لعرض الاقتراح"))
         f.addRow(T("Minimum confidence", "أقل ثقة"), self.ai_conf)
@@ -856,6 +867,7 @@ class HistologyStudio(QWidget):
                 self, T("Processing and verifying the image…", "جارٍ المعالجة والتحقق من سلامة الصورة…"), work)
         except Exception as e:
             QMessageBox.critical(self, "", str(e)); return
+        self.marks_kept = 0
         self.show_orig.setChecked(False)
         self.integrity = rep
         self.ba.setValue(0)
@@ -883,6 +895,7 @@ class HistologyStudio(QWidget):
             QMessageBox.critical(self, "", str(e)); return
         self.set_controls(steps)
         self.processed, self.steps_done, self.integrity, self.qc_before, self.qc_after = out, done, rep, qb, qa
+        self.marks_kept = info.get("marks_kept_px", 0)
         self.show_orig.setChecked(False)
         self.ba.setValue(0)
         self.refresh_view(); self.render_report(); self._badge(info)
@@ -899,7 +912,9 @@ class HistologyStudio(QWidget):
         if info:
             st = IC.STAIN_PRESETS[info["stain"]]["ar"] if SETTINGS.language == "ar" else info["stain"]
             txt += "<br><span style='color:#5B6B82'>" + T("Stain", "الصبغة") + f": {st}" + (
-                " · " + T("eyepiece field cropped", "تم قص دائرة العدسة") if info.get("cropped") else "") + "</span>"
+                " · " + T("eyepiece field cropped", "تم قص دائرة العدسة") if info.get("cropped") else "") + (
+                " · " + T("drawn arrows / scale bar kept unchanged", "الأسهم ومقياس الرسم المرسومة بقيت كما هي")
+                if info.get("marks_kept_px") else "") + "</span>"
         txt += "<br><span style='color:#5B6B82'>" + T("Drag the Before/After slider under the image to compare.",
                                                       "اسحب شريط قبل/بعد أسفل الصورة للمقارنة.") + "</span>"
         self.pr_badge.setText(txt)
@@ -911,7 +926,7 @@ class HistologyStudio(QWidget):
             self.refresh_view(); self.render_report(); self.pr_badge.setText("")
 
     def render_report(self):
-        log = IC.EditLog(self.name, self.steps_done)
+        log = IC.EditLog(self.name, self.steps_done, marks_kept=getattr(self, "marks_kept", 0) if self.steps_done else 0)
         html = f"<h3>{self.name}</h3>"
         qb, qa = getattr(self, "qc_before", None), getattr(self, "qc_after", None)
         if qb:
@@ -1031,7 +1046,8 @@ class HistologyStudio(QWidget):
         img = IC.measurement_image(self.original, self.steps_done) if self.steps_done else self.original
         try:
             r = run_busy(self, T("Reading the image (AI)…", "جاري قراءة الصورة بالذكاء الاصطناعي…"),
-                         lambda: RD.read_image(img, self.px.value(), self._ai_stain(), self.ai_conf.value() / 100, vacuoles=self.ai_vac.isChecked()))
+                         lambda: RD.read_image(img, self.px.value(), self._ai_stain(), self.ai_conf.value() / 100, vacuoles=self.ai_vac.isChecked(),
+                                                  profile=self.ai_profile.currentData()))
         except Exception as e:
             QMessageBox.critical(self, "", str(e)); return
         self.view.clear_overlays(); self.view.clear_candidates()
@@ -1083,6 +1099,16 @@ class HistologyStudio(QWidget):
                     path.lineTo(QPointF(x0 + x - 1, y0 + y - 1))
                 it = QGraphicsPathItem(path); it.setPen(QPen(QColor(RD.COLOURS["congestion"]), lw, Qt.DashLine))
                 self._suggest(it, "congestion", cg["conf"], T("Congestion (RBC-rich)", "احتقان (غني بكرات الدم الحمراء)"))
+        for gl in r.get("glomeruli", []):
+            cnt = gl.get("contour")
+            if cnt is None or len(cnt) < 6:
+                continue
+            path = QPainterPath(QPointF(cnt[0][1], cnt[0][0]))
+            for y, x in cnt[1:]:
+                path.lineTo(QPointF(x, y))
+            path.closeSubpath()
+            it = QGraphicsPathItem(path); it.setPen(QPen(QColor(RD.COLOURS["glomerulus"]), lw, Qt.DashLine))
+            self._suggest(it, "glomerulus", gl.get("conf", 0.8), T("Glomerulus", "كبيبة"))
         for v in r["vacuoles"]:
             it = QGraphicsEllipseItem(v["x"] - v["r"], v["y"] - v["r"], 2 * v["r"], 2 * v["r"])
             it.setPen(QPen(QColor(RD.COLOURS["vacuole"]), lw, Qt.DashLine))
@@ -1122,10 +1148,10 @@ class HistologyStudio(QWidget):
         self.view.candidate_items = []
         black = QColor("#000000")
         labels = {"inflammatory": "Inflammatory cells", "focus": "Inflammatory infiltrate", "congestion": "Congestion",
-                  "vacuole": "Vacuolation", "dab3": "Strong positive (DAB)", "dab2": "Moderate positive", "dab1": "Weak positive"}
+                  "vacuole": "Vacuolation", "glomerulus": "Glomerulus", "dab3": "Strong positive (DAB)", "dab2": "Moderate positive", "dab1": "Weak positive"}
         H = self.processed.shape[0]
         placed = []
-        order = ["focus", "inflammatory", "congestion", "vacuole", "dab3", "dab2", "dab1"]
+        order = ["focus", "inflammatory", "congestion", "vacuole", "glomerulus", "dab3", "dab2", "dab1"]
         for kind in [k for k in order if k in kinds]:
             its = kinds[kind]
             if kind == "focus":
@@ -1307,7 +1333,7 @@ class HistologyStudio(QWidget):
             return
         path, _ = QFileDialog.getSaveFileName(self, "", os.path.splitext(self.name)[0] + "_edit_log.json", "JSON (*.json)")
         if path:
-            log = IC.EditLog(self.name, self.steps_done)
+            log = IC.EditLog(self.name, self.steps_done, marks_kept=getattr(self, "marks_kept", 0) if self.steps_done else 0)
             data = json.loads(log.to_json())
             data["integrity"] = getattr(self, "integrity", None)
             data["methods_text"] = log.methods_text()
@@ -1351,7 +1377,7 @@ class HistologyStudio(QWidget):
             ax2.set_title("Processed / annotated"); ax2.axis("off")
             fig.tight_layout()
         res.figure(fig, "Original and processed image (global adjustments only).")
-        res.methods(IC.EditLog(self.name, self.steps_done).methods_text())
+        res.methods(IC.EditLog(self.name, self.steps_done, marks_kept=getattr(self, "marks_kept", 0) if self.steps_done else 0).methods_text())
         self.send_result.emit(res)
 
     def batch(self):

@@ -1,0 +1,234 @@
+{
+ "name": "Rodent tissue inflammatory-cell gate",
+ "features": [
+  "logit_p_inflammatory_builtin",
+  "dark_neighbours_per_1000um2_r8",
+  "dark_neighbours_per_1000um2_r15",
+  "dark_neighbours_per_1000um2_r25",
+  "log_nucleus_area_um2",
+  "gray_z_within_image"
+ ],
+ "mean": [
+  0.44006379251263494,
+  1.896804435463143,
+  2.0626835104825743,
+  1.9372031317310896,
+  3.1099594412699503,
+  -0.05231794720022351
+ ],
+ "scale": [
+  4.48360379632453,
+  3.3785260163653166,
+  2.3840851044283453,
+  1.8537283667247515,
+  0.43372201456231485,
+  0.7301043886144417
+ ],
+ "coef": [
+  1.009285680040301,
+  0.12982875564663013,
+  0.33153880245216477,
+  0.4225904118514443,
+  -0.11656284745592252,
+  0.19729151631104228
+ ],
+ "intercept": -1.1475584931768843,
+ "threshold": 0.7682120081899484,
+ "trained_on": "22 rat kidney and skeletal-muscle H&E photomicrographs (10\u00d7, 20\u00d7, 40\u00d7): nuclei in images described as normal = negatives; nuclei at the targets of the pathologist's inflammation arrows = positives (131 positives, 10006 negatives)",
+ "validation": {
+  "operating_threshold": 0.768,
+  "validation": "leave-one-image-out over 22 labelled images",
+  "images": {
+   "Kidney_01": {
+    "tissue": "Kidney",
+    "role": "normal (legend)",
+    "glomeruli_found": 1,
+    "suggested_per_mm2_new": 20.3,
+    "suggested_per_mm2_v15": 1582.9
+   },
+   "Kidney_02": {
+    "tissue": "Kidney",
+    "role": "normal (legend)",
+    "glomeruli_found": 1,
+    "suggested_per_mm2_new": 477.6,
+    "suggested_per_mm2_v15": 6125.4
+   },
+   "Kidney_03": {
+    "tissue": "Kidney",
+    "role": "normal (legend)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 55.9,
+    "suggested_per_mm2_v15": 3222.5
+   },
+   "Kidney_04": {
+    "tissue": "Kidney",
+    "role": "normal (legend)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 444.8,
+    "suggested_per_mm2_v15": 2201.3
+   },
+   "Kidney_05": {
+    "tissue": "Kidney",
+    "role": "normal (legend)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 15.9,
+    "suggested_per_mm2_v15": 981.7
+   },
+   "Kidney_15": {
+    "tissue": "Kidney",
+    "role": "normal (legend)",
+    "glomeruli_found": 1,
+    "suggested_per_mm2_new": 813.4,
+    "suggested_per_mm2_v15": 3274.1
+   },
+   "Kidney_16": {
+    "tissue": "Kidney",
+    "role": "inflammation (pathologist's arrows)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 815.0,
+    "suggested_per_mm2_v15": 4966.4,
+    "recall_new": 0.57,
+    "recall_v15": 0.91
+   },
+   "Kidney_18": {
+    "tissue": "Kidney",
+    "role": "normal (legend)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 1036.7,
+    "suggested_per_mm2_v15": 4378.2
+   },
+   "Kidney_19": {
+    "tissue": "Kidney",
+    "role": "normal (legend)",
+    "glomeruli_found": 1,
+    "suggested_per_mm2_new": 1719.1,
+    "suggested_per_mm2_v15": 8269.2
+   },
+   "Kidney_20": {
+    "tissue": "Kidney",
+    "role": "normal (legend)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 41.3,
+    "suggested_per_mm2_v15": 3322.5
+   },
+   "Kidney_21": {
+    "tissue": "Kidney",
+    "role": "inflammation (pathologist's arrows)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 537.1,
+    "suggested_per_mm2_v15": 4028.1,
+    "recall_new": 0.5,
+    "recall_v15": 0.88
+   },
+   "Muscle_01": {
+    "tissue": "Muscle",
+    "role": "normal (legend)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 6.4,
+    "suggested_per_mm2_v15": 325.8
+   },
+   "Muscle_02": {
+    "tissue": "Muscle",
+    "role": "normal (legend)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 4.8,
+    "suggested_per_mm2_v15": 644.6
+   },
+   "Muscle_03": {
+    "tissue": "Muscle",
+    "role": "normal (legend)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 0.0,
+    "suggested_per_mm2_v15": 718.7
+   },
+   "Muscle_04": {
+    "tissue": "Muscle",
+    "role": "normal (legend)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 0.0,
+    "suggested_per_mm2_v15": 680.9
+   },
+   "Muscle_05": {
+    "tissue": "Muscle",
+    "role": "normal (legend)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 5.0,
+    "suggested_per_mm2_v15": 691.8
+   },
+   "Muscle_06": {
+    "tissue": "Muscle",
+    "role": "inflammation (pathologist's arrows)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 21.5,
+    "suggested_per_mm2_v15": 797.5,
+    "recall_new": 0.27,
+    "recall_v15": 0.91
+   },
+   "Muscle_07": {
+    "tissue": "Muscle",
+    "role": "inflammation (pathologist's arrows)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 102.3,
+    "suggested_per_mm2_v15": 1149.8,
+    "recall_new": 0.5,
+    "recall_v15": 0.92
+   },
+   "Muscle_10": {
+    "tissue": "Muscle",
+    "role": "inflammation (pathologist's arrows)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 52.8,
+    "suggested_per_mm2_v15": 529.5,
+    "recall_new": 0.55,
+    "recall_v15": 0.8
+   },
+   "Muscle_11": {
+    "tissue": "Muscle",
+    "role": "inflammation (pathologist's arrows)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 167.4,
+    "suggested_per_mm2_v15": 818.9,
+    "recall_new": 0.88,
+    "recall_v15": 1.0
+   },
+   "Muscle_14": {
+    "tissue": "Muscle",
+    "role": "inflammation (pathologist's arrows)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 7.3,
+    "suggested_per_mm2_v15": 96.5,
+    "recall_new": 0.55,
+    "recall_v15": 0.73
+   },
+   "Muscle_15": {
+    "tissue": "Muscle",
+    "role": "normal (legend)",
+    "glomeruli_found": 0,
+    "suggested_per_mm2_new": 0.0,
+    "suggested_per_mm2_v15": 864.1
+   }
+  },
+  "auc_new": 0.862,
+  "auc_v15": 0.807,
+  "Kidney": {
+   "normal_images": 9,
+   "FP_per_mm2_median_new": 444.8,
+   "FP_per_mm2_median_v15": 3274.1,
+   "FP_per_mm2_mean_new": 513.9,
+   "FP_per_mm2_mean_v15": 3706.4,
+   "inflammation_images": 2,
+   "recall_new": 0.53,
+   "recall_v15": 0.9
+  },
+  "Muscle": {
+   "normal_images": 6,
+   "FP_per_mm2_median_new": 2.4,
+   "FP_per_mm2_median_v15": 686.3499999999999,
+   "FP_per_mm2_mean_new": 2.7,
+   "FP_per_mm2_mean_v15": 654.3,
+   "inflammation_images": 5,
+   "recall_new": 0.55,
+   "recall_v15": 0.87
+  }
+ }
+}

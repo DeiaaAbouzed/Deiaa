@@ -30,6 +30,15 @@ def _normal(x):
     return p >= 0.05, p
 
 
+def _is_score(s: pd.Series) -> bool:
+    """An ordinal grade coded as integers (0–3, 0–4, 1–5 …): numeric, whole numbers, ≥ 3 levels, ≤ 11 levels."""
+    v = pd.to_numeric(s, errors="coerce").dropna()
+    if len(v) < 4 or v.size != s.dropna().size:
+        return False
+    u = np.unique(v)
+    return 3 <= len(u) <= 11 and np.allclose(u, np.round(u)) and u.min() >= 0 and u.max() - u.min() <= 10
+
+
 def auto_analyze(df: pd.DataFrame, outcome: str, factor: str | None = None):
     from ..analyses.registry import run
     en, ar = [], []
@@ -65,11 +74,17 @@ def auto_analyze(df: pd.DataFrame, outcome: str, factor: str | None = None):
             lev_p = stats.levene(*groups.values(), center="median")[1]
             if len(levels) >= 3:
                 # ANOVA assumes normal residuals; testing the pooled residuals avoids the inflated false-alarm
-                # rate of running one Shapiro-Wilk test per group
-                resid = np.concatenate([v - v.mean() for v in groups.values()])
+                # rate of running one Shapiro-Wilk test per group. With unequal variances the pooled raw residuals
+                # are a scale mixture (heavy-tailed even when every group is normal), so each group's residuals are
+                # first divided by that group's SD.
+                hetero = lev_p < 0.05
+                resid = np.concatenate([(v - v.mean()) / (v.std(ddof=1) if hetero and len(v) > 1 and v.std(ddof=1) > 0 else 1)
+                                        for v in groups.values()])
                 all_norm, p_res = _normal(resid)
-                en.append(f"Normality of the ANOVA residuals (pooled, n = {len(resid)}): Shapiro-Wilk p {_pe(p_res)}.")
-                ar.append(f"التوزيع الطبيعي لبواقي تحليل التباين (مجمّعة، العدد = {len(resid)}): شابيرو-ويلك p {_pe(p_res)}.")
+                kind_en = "standardised within each group because variances differ" if hetero else "pooled"
+                kind_ar = "معيارية داخل كل مجموعة لاختلاف التباين" if hetero else "مجمّعة"
+                en.append(f"Normality of the ANOVA residuals ({kind_en}, n = {len(resid)}): Shapiro-Wilk p {_pe(p_res)}.")
+                ar.append(f"التوزيع الطبيعي لبواقي تحليل التباين ({kind_ar}، العدد = {len(resid)}): شابيرو-ويلك p {_pe(p_res)}.")
             if len(levels) == 2:
                 if all_norm:
                     aid, kw = "ttest_ind", {"outcome": outcome, "group": factor}
@@ -83,12 +98,26 @@ def auto_analyze(df: pd.DataFrame, outcome: str, factor: str | None = None):
                 if all_norm:
                     ph = "Tukey HSD" if lev_p >= 0.05 else "Games-Howell"
                     aid, kw = "anova1", {"outcome": outcome, "group": factor, "posthoc": ph}
-                    en.append(f"Normal data, ≥ 3 groups → one-way ANOVA; Levene p {_pe(lev_p)} → {ph} post hoc.")
-                    ar.append(f"بيانات طبيعية و3 مجموعات أو أكثر ← تحليل التباين الأحادي؛ اختبار ليفين p {_pe(lev_p)} ← اختبار {ph} البعدي.")
+                    an_en = "Welch's ANOVA" if lev_p < 0.05 else "one-way ANOVA"
+                    an_ar = "تحليل تباين ويلش" if lev_p < 0.05 else "تحليل التباين الأحادي"
+                    en.append(f"Normal data, ≥ 3 groups → {an_en}; Levene p {_pe(lev_p)} → {ph} post hoc.")
+                    ar.append(f"بيانات طبيعية و3 مجموعات أو أكثر ← {an_ar}؛ اختبار ليفين p {_pe(lev_p)} ← اختبار {ph} البعدي.")
                 else:
                     aid, kw = "kruskal", {"outcome": outcome, "group": factor}
                     en.append("Normality violated, ≥ 3 groups → Kruskal-Wallis with Dunn's post hoc.")
                     ar.append("توزيع غير طبيعي و3 مجموعات أو أكثر ← كروسكال-واليس مع اختبار دن البعدي.")
+        elif ok == "categorical" and fk in ("binary", "categorical") and _is_score(df[outcome]):
+            levels = _level_order(df[factor].dropna())
+            if len(levels) == 2:
+                aid, kw = "mannwhitney", {"outcome": outcome, "group": factor}
+                tn_en, tn_ar = "Mann-Whitney U test", "اختبار مان-ويتني"
+            else:
+                aid, kw = "kruskal", {"outcome": outcome, "group": factor}
+                tn_en, tn_ar = "Kruskal-Wallis test with Dunn's post hoc", "اختبار كروسكال-واليس مع اختبار دن البعدي"
+            en.append(f"'{outcome}' is an ordered integer score (e.g. a histopathological lesion grade) → {tn_en}; "
+                      "results are reported as median (IQR). A chi-square test would ignore the order of the grades.")
+            ar.append(f"'{outcome}' درجة ترتيبية بأعداد صحيحة (مثل درجة الآفة النسيجية) ← {tn_ar}؛ وتُعرض النتائج "
+                      "كوسيط (المدى الربيعي). اختبار كاي تربيع يتجاهل ترتيب الدرجات.")
         elif ok in ("binary", "categorical") and fk in ("binary", "categorical"):
             aid, kw = "chisq", {"row": factor, "col": outcome}
             en.append("Two categorical variables → contingency table; Fisher's exact is used automatically if expected counts < 5.")

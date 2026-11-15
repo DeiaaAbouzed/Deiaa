@@ -1,0 +1,127 @@
+"""v1.6: scale-bar calibration, annotation-mark masking, rodent inflammatory gate, glomerulus finder, reader profiles."""
+import os
+import sys
+
+import numpy as np
+import pytest
+from PIL import Image, ImageDraw, ImageFont
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from medstatix.imaging import core as IC  # noqa: E402
+
+SAMPLES = os.path.join(os.path.dirname(__file__), "..", "medstatix", "resources", "sample_images")
+
+
+def _tissue(h=600, w=800, seed=0):
+    rng = np.random.default_rng(seed)
+    img = np.empty((h, w, 3), np.uint8)
+    img[...] = (225, 130, 215)
+    img = np.clip(img + rng.normal(0, 6, img.shape), 0, 255).astype(np.uint8)
+    return img
+
+
+def _with_scale_bar(img, bar_px=120, label="50"):
+    im = Image.fromarray(img); d = ImageDraw.Draw(im)
+    H, W = img.shape[:2]
+    x1, y1 = W - 10, H - 10
+    x0, y0 = x1 - bar_px - 30, y1 - 60
+    d.rectangle([x0, y0, x1, y1], fill=(255, 255, 255))
+    d.rectangle([x0 + 15, y0 + 10, x0 + 15 + bar_px - 1, y0 + 16], fill=(0, 0, 0))
+    try:
+        font = ImageFont.truetype("DejaVuSans.ttf", 28)
+    except OSError:
+        font = ImageFont.load_default()
+    d.text((x0 + 30, y0 + 20), label + " µm", fill=(0, 0, 0), font=font)
+    return np.array(im)
+
+
+def test_scale_bar_length_and_mask():
+    from medstatix.imaging import marks as MK
+    img = _with_scale_bar(_tissue(), 120)
+    sb = MK.scale_bar(img)
+    assert sb is not None and abs(sb["px"] - 120) <= 2
+    if sb["um"] is not None:                       # digits read only when a TrueType font was available
+        assert sb["um"] == 50 and abs(sb["um_per_px"] - 50 / 120) < 0.01
+    m = MK.find_marks(img)["mask"]
+    assert m[-30, -60] and not m[100, 100]
+
+
+def test_arrowhead_tip_found():
+    from medstatix.imaging import marks as MK
+    img = _tissue()
+    im = Image.fromarray(img); d = ImageDraw.Draw(im)
+    d.polygon([(300, 300), (340, 280), (340, 320)], fill=(0, 0, 0))      # arrowhead pointing left, tip at (300, 300)
+    tips = MK.find_marks(np.array(im))["tips"]
+    assert tips and min(abs(t["x"] - 300) + abs(t["y"] - 300) for t in tips) < 8
+    t = min(tips, key=lambda t: abs(t["x"] - 300))
+    assert t["dx"] < -0.8
+
+
+def test_scale_for_working_resolution():
+    from medstatix.imaging import nuclei as NU
+    assert NU.scale_for(0.25, (1000, 1000)) == 1.0
+    assert abs(NU.scale_for(0.5, (1000, 1000)) - 2.0) < 1e-9
+    assert NU.scale_for(1.0, (4000, 4000)) == 1.0            # capped by the pixel budget
+    assert NU.scale_for(0.05, (500, 500)) == 0.5
+
+
+def test_tissue_gate_scores():
+    from medstatix.imaging import tissue_gate as TG, cellclass as CC
+    if not TG.available():
+        pytest.skip("rodent model missing")
+    rng = np.random.default_rng(0)
+    n = 200
+    X = rng.normal(size=(n, len(CC.FEATURES))).astype(np.float32)
+    cen = rng.uniform(0, 800, (n, 2))
+    p = rng.uniform(0, 1, n)
+    q = TG.score(X, cen, 0.5, p)
+    assert q.shape == (n,) and np.all((q >= 0) & (q <= 1))
+    q2 = TG.score(X, cen, 0.5, np.clip(p + 0.3, 0, 1))
+    assert q2.mean() > q.mean()                  # a higher built-in probability raises the gated score
+    m = TG.model()
+    assert "validation" in m or "report" in m or "trained_on" in m
+
+
+def test_glomeruli_low_magnification_and_blank():
+    from medstatix.imaging import structures as ST
+    img = _tissue(400, 400)
+    assert ST.glomeruli(img, [], 1.0)[0] == []               # disabled at low magnification
+    out, mask = ST.glomeruli(img, [], 0.4)
+    assert out == [] and mask.shape == img.shape[:2]
+
+
+def test_reader_profiles_run():
+    from medstatix.imaging import reader as RD
+    img = IC.load_image(os.path.join(SAMPLES, "HE_breast_carcinoma_1.png"))[:384, :384]
+    for prof in RD.PROFILES:
+        r = RD.read_image(img, 0.5, "auto", 0.65, profile=prof)
+        assert r["profile"] == prof and len(r["cells"]) > 10
+        assert "Calibration (µm per pixel)" in r["summary"] or r["px_um"]
+
+
+def test_enhancement_keeps_drawn_marks():
+    img = _with_scale_bar(_tissue(), 120)
+    out, done, rep, steps, info = IC.publication_ready(img)
+    H, W = img.shape[:2]
+    box = img[H - 60:H - 12, W - 150:W - 12]
+    assert (out[H - 60:H - 12, W - 150:W - 12][box.min(2) >= 250] >= 250).all()     # label box stays white
+    assert info.get("marks_kept_px", 0) > 0
+    a = IC.load_image(os.path.join(SAMPLES, "HE_breast_carcinoma_1.png"))
+    assert "marks_kept_px" not in IC.publication_ready(a)[4]
+
+
+def _scores_df():
+    import pandas as pd
+    rng = np.random.default_rng(0)
+    return pd.DataFrame({"Group": np.repeat(["G1", "G2", "G3", "G4"], 6),
+                         "Score": np.r_[[0, 0, 0, 1, 0, 0], [1, 1, 2, 1, 2, 1], [3, 3, 2, 3, 3, 2], [2, 1, 2, 2, 1, 2]],
+                         "Infl": np.r_[rng.normal(50, 10, 6), rng.normal(60, 10, 6), rng.normal(700, 150, 6), rng.normal(500, 100, 6)]})
+
+
+def test_advisor_ordinal_scores_and_unequal_variances():
+    from medstatix.core.advisor import auto_analyze
+    df = _scores_df()
+    assert auto_analyze(df.copy(), "Score", "Group")[1] == "kruskal"          # lesion grade: rank test, not chi-square
+    assert auto_analyze(df[df.Group.isin(["G1", "G3"])].copy(), "Score", "Group")[1] == "mannwhitney"
+    res, aid = auto_analyze(df.copy(), "Infl", "Group")                       # normal groups, unequal SDs
+    assert aid == "anova1" and "Games-Howell" in res.blocks[0].content["en"]
