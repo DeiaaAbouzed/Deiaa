@@ -173,6 +173,9 @@ def test_scale_bar_dialog_offscreen():
     sc = QGraphicsScene()
     grp, um = scale_bar_item(sc, img.shape, v)
     assert um == IC.nice_bar_um(img.shape[1], 0.5) and len(grp.childItems()) == 3
+    sc.clear(); sc.deleteLater(); d.close(); d.deleteLater()      # release Qt objects before the interpreter exits
+    app.processEvents()
+    del grp, sc, d
 
 
 def _apo_like():
