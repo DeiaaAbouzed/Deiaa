@@ -25,9 +25,13 @@ def _scale_box(img):
     """The white rectangle holding the scale bar and its label, near a corner."""
     H, W = img.shape[:2]
     wh = _pure_white(img)
-    lab = measure.label(ndi.binary_fill_holes(wh | _dark(img)) & ~_border_tissue(img))
     best = None
-    for r in measure.regionprops(lab):
+    # the white box alone (bar and digits are holes in it) and the box together with its dark content; the first
+    # copes with dark tissue touching the box, the second with a box whose content touches its edge
+    box_only = ndi.binary_opening(ndi.binary_fill_holes(wh), np.ones((7, 7), bool))   # a rectangle survives opening
+    regs = [r for m in (box_only, ndi.binary_fill_holes(wh | _dark(img)))
+            for r in measure.regionprops(measure.label(m))]
+    for r in regs:
         y0, x0, y1, x1 = r.bbox
         h, w = y1 - y0, x1 - x0
         if not (0.003 * H * W <= r.area <= 0.08 * H * W) or r.extent < 0.9 or w < 1.3 * h:
@@ -43,11 +47,6 @@ def _scale_box(img):
     return best
 
 
-def _border_tissue(img):
-    # never used to exclude anything: placeholder that keeps the label image well defined
-    return np.zeros(img.shape[:2], bool)
-
-
 def _read_digits(glyphs):
     """Very small digit reader for scale-bar labels (0, 1, 2, 5 cover 5–1000 µm)."""
     out = ""
@@ -58,7 +57,7 @@ def _read_digits(glyphs):
             out += "8"; continue
         if holes == 1:
             out += "0" if w / h > 0.45 else "0"; continue
-        if w / h < 0.42:
+        if w / h < 0.42 or g.mean(0).max() >= 0.9:          # narrow, or one full-height vertical stroke (bold '1')
             out += "1"; continue
         band = g[int(0.15 * h):int(0.4 * h) + 1, : max(1, w // 3)]
         out += "5" if band.any(1).mean() >= 0.6 else "2"     # '5' has a vertical stroke at the upper left

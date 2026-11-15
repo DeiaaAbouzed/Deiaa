@@ -10,7 +10,7 @@ import pandas as pd
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
                                QFormLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMessageBox, QProgressBar,
-                               QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout)
+                               QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout)
 
 from ..core.settings import SETTINGS
 from ..imaging import core as IC
@@ -42,16 +42,28 @@ def list_images(root: str) -> list[str]:
     return sorted(out)
 
 
-def process_one(path, stain, source, level, kind, px, out_dir, fmt, dpi, save_ba):
-    """Enhance one image (publication-ready), save it, and quantify on the native-colour measurement image."""
+def process_one(path, stain, source, level, kind, px, out_dir, fmt, dpi, save_ba, scale_bar=None):
+    """Enhance one image (publication-ready), save it, and quantify on the native-colour measurement image.
+    scale_bar: None, or dict(position, style, length_um) to burn a calibrated bar into the saved images (the pixel
+    size is px, or the bar already on the image when px is 0)."""
     img = IC.load_image(path)
+    from ..imaging import marks as MK
+    existing = MK.scale_bar(img)
+    if not px and existing and existing.get("um_per_px"):
+        px = existing["um_per_px"]
+    if existing:
+        scale_bar = None if scale_bar is None else "existing"            # never draw a second bar
     out, done, rep, steps, info = IC.publication_ready(img, stain, source, level)
     base = IC.apply_pipeline(img, [s for s in steps if s["op"] == "crop"])[0]
     name = os.path.splitext(os.path.basename(path))[0]
     if out_dir:
-        IC.save_image(out, os.path.join(out_dir, f"{name}_processed.{fmt}"), dpi)
+        so, sb_ = out, base
+        if isinstance(scale_bar, dict) and px:
+            so = IC.draw_scale_bar(out, px, **scale_bar)
+            sb_ = IC.draw_scale_bar(base, px, **scale_bar)
+        IC.save_image(so, os.path.join(out_dir, f"{name}_processed.{fmt}"), dpi)
         if save_ba:
-            IC.save_image(IC.compose_panels([base, out], 2, ["A  Original", "B  Processed"]),
+            IC.save_image(IC.compose_panels([sb_, so], 2, ["A  Original", "B  Processed"]),
                           os.path.join(out_dir, f"{name}_before_after.{fmt}"), dpi)
         log = IC.EditLog(os.path.basename(path), done)
         with open(os.path.join(out_dir, f"{name}_edit_log.json"), "w", encoding="utf-8") as f:
@@ -60,7 +72,9 @@ def process_one(path, stain, source, level, kind, px, out_dir, fmt, dpi, save_ba
     q = IC.quantify(IC.measurement_image(img, steps), kind, px) if kind and not kind.startswith("None") else {}
     qs = "IHC" if info["stain"] == "IHC-DAB" else "H&E"
     return {"quality_before": IC.image_qc(base, qs)["score"], "quality_after": IC.image_qc(out, qs)["score"],
-            "integrity": "passed" if rep.get("passed") else "CHECK", **q}, done
+            "integrity": "passed" if rep.get("passed") else "CHECK", "um_per_px": round(px, 4) if px else None,
+            "scale_bar": "already on image" if scale_bar == "existing" else ("added" if px else "no calibration") if scale_bar else "",
+            **q}, done
 
 
 class BatchDialog(QDialog):
@@ -107,6 +121,19 @@ class BatchDialog(QDialog):
         self.ba = QCheckBox(T("also save before/after", "حفظ مقارنة قبل/بعد أيضًا")); self.ba.setChecked(True)
         r3.addWidget(self.fmt); r3.addWidget(self.dpi); r3.addWidget(self.ba); r3.addStretch(1)
         f.addRow(T("Save processed images", "حفظ الصور المحسنة"), r3)
+        r4 = QHBoxLayout()
+        self.sbar = QCheckBox(T("add a scale bar", "إضافة مقياس رسم")); self.sbar.setChecked(True)
+        self.sbar.setToolTip(T("Uses the pixel size above; when it is 0, the scale bar already drawn on each image is read.",
+                               "يستخدم حجم البكسل أعلاه؛ وإذا كان صفرًا يُقرأ مقياس الرسم الموجود على كل صورة."))
+        self.sb_pos = QComboBox(); [self.sb_pos.addItem(k, k) for k in IC.SCALE_BAR_POSITIONS]
+        self.sb_style = QComboBox(); [self.sb_style.addItem(k, k) for k in IC.SCALE_BAR_STYLES]
+        self.sb_len = QSpinBox(); self.sb_len.setRange(0, 5000); self.sb_len.setSuffix(" µm")
+        self.sb_len.setSpecialValueText(T("auto length", "طول تلقائي"))
+        self.sb_len.setToolTip(T("Use one fixed length for every image at the same magnification.", "استخدم طولًا واحدًا لكل الصور بنفس التكبير."))
+        for w_ in (self.sbar, self.sb_pos, self.sb_style, self.sb_len):
+            r4.addWidget(w_)
+        r4.addStretch(1)
+        f.addRow(T("Scale bar", "مقياس الرسم"), r4)
         lay.addLayout(f)
         self.bar = QProgressBar(); lay.addWidget(self.bar)
         self.tbl = QTableWidget(0, 0); lay.addWidget(self.tbl, 1)
@@ -160,7 +187,9 @@ class BatchDialog(QDialog):
         with concurrent.futures.ThreadPoolExecutor(1) as ex:
             fut = ex.submit(process_one, p, self.stain.currentData(), self.source.currentData(), self.level.currentData(),
                             self.kind.currentText(), self.px.value(), out_dir, self.fmt.currentData(), self.dpi.currentData(),
-                            self.ba.isChecked())
+                            self.ba.isChecked(),
+                            dict(position=self.sb_pos.currentData(), style=self.sb_style.currentData(),
+                                 length_um=self.sb_len.value() or None) if self.sbar.isChecked() else None)
             while not fut.done():
                 QApplication.processEvents(); time.sleep(0.03)
         return fut.result()

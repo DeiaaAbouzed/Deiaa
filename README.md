@@ -41,6 +41,8 @@ MedStatix Pro brings together what researchers usually spread across SPSS, Graph
 
 ## New in v1.6: AI reader for rodent tissue
 
+- **Scale bar (1.6.1)**: pixel size from a saved calibration per objective or read from the bar already on the image; automatic round length, position, black/white style with or without a box; batch processing adds a calibrated bar to every saved image (never a second one).
+
 - **Calibration from the figure itself**: the scale bar drawn on a photomicrograph is found, its length measured and its label read (5–1000 µm); nuclei are then detected at the model's working resolution (0.25 µm/px). At 10× and 20× this finds 5–40 times more nuclei than v1.5.
 - **Drawn marks are ignored**: arrows, arrowheads, stars, letters and the scale-bar box are masked out of every measurement, and one-click enhancement keeps them unchanged (disclosed in the methods text).
 - **Tissue profiles**: *Rat/mouse kidney*, *Other rodent tissue* and *Human/other*. The rodent profiles add a calibrated inflammatory-cell filter (logistic model on the built-in probability and the local density of dark nuclei) trained on 22 rat kidney and skeletal-muscle H&E images with weak labels (the pathologist's arrows and "normal" legends). Leave-one-image-out: AUC 0.86 vs 0.81; false positives in normal muscle ~2 vs ~690 per mm², in normal kidney ~450 vs ~3300 per mm²; recall at the arrows 0.53–0.55 vs 0.87–0.90. Only the model weights are distributed, never the images.

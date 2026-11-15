@@ -656,7 +656,17 @@ class HistologyStudio(QWidget):
             self.view.scene_.removeItem(it)
         self.view.clear_overlays(); self.view.candidate_items = []
         self.view.set_image(arr)
-        self.info_lbl.setText(f"{name} — {arr.shape[1]}×{arr.shape[0]} px")
+        info = f"{name} — {arr.shape[1]}×{arr.shape[0]} px"
+        try:
+            from ..imaging import marks as MK
+            sb = MK.scale_bar(arr)
+        except Exception:
+            sb = None
+        if sb and sb.get("um_per_px"):
+            self.px.setValue(round(sb["um_per_px"], 4))
+            info += " · " + T(f"scale bar {sb['um']} µm read → {sb['um_per_px']:.4f} µm/px",
+                              f"قُرئ مقياس الرسم {sb['um']} ميكرومتر ← {sb['um_per_px']:.4f} ميكرومتر/بكسل")
+        self.info_lbl.setText(info)
         self.report.setHtml(f"<h3>{name}</h3><p>{arr.shape[1]} × {arr.shape[0]} px</p>")
 
     def open_image(self):
@@ -1246,28 +1256,16 @@ class HistologyStudio(QWidget):
             self.view.color = c
 
     def add_scale_bar(self):
+        from .scalebar_ui import ScaleBarDialog, scale_bar_item
         if self.original is None:
             return
-        px = self.px.value()
-        if px <= 0:
-            QMessageBox.information(self, "", T("Enter the pixel size (µm/px) first — from your microscope calibration.",
-                                                "أدخل حجم البكسل (ميكرومتر/بكسل) أولًا من معايرة المجهر."))
+        dlg = ScaleBarDialog(self, self.processed, self.px.value())
+        if dlg.exec() != QDialog.Accepted:
             return
-        H, W = self.processed.shape[:2]
-        raw = W * 0.18 * px
-        nice = min([1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000], key=lambda v: abs(v - raw))
-        um, ok = QInputDialog.getDouble(self, T("Scale bar", "مقياس الرسم"), T("Length (µm)", "الطول (ميكرومتر)"), nice, 1, 5000, 0)
-        if not ok:
-            return
-        L = um / px
-        th = max(4, H / 120)
-        x, y = W - L - W * 0.04, H - H * 0.06
-        bar = QGraphicsRectItem(x, y, L, th); bar.setBrush(QBrush(self.view.color)); bar.setPen(QPen(Qt.NoPen))
-        bar.setFlags(QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemIsMovable)
-        self.view.scene_.addItem(bar)
-        lab = LabelItem(f"{um:g} µm", QPointF(x, y - self.view.font_size * 1.9), self.view.color, self.view.font_size, box=False)
-        self.view.scene_.addItem(lab)
-        lab.setPos(x + L / 2 - lab.boundingRect().width() / 2, y - lab.boundingRect().height() - 4)
+        v = dlg.values()
+        if not self.px.value():
+            self.px.setValue(v["um_per_px"])          # the calibration also serves the measurements
+        scale_bar_item(self.view.scene_, self.processed.shape, v)
 
     def clear_annotations(self):
         for it in list(self.view.annotation_items()):

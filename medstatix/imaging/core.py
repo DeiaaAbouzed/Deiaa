@@ -1272,3 +1272,73 @@ def quantify(img: np.ndarray, kind: str, px_um: float = 0.0, dab=(0.08, 0.15, 0.
     else:
         res = {}
     return {k: (float(v) if isinstance(v, (np.floating, np.integer)) else v) for k, v in res.items()}
+
+
+# ----------------------------------------------------------------------------- scale bar
+SCALE_BAR_UM = (1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000)
+SCALE_BAR_POSITIONS = ("bottom-right", "bottom-left", "top-right", "top-left")
+SCALE_BAR_STYLES = ("black on white box", "black", "white", "white on black box")
+
+
+def nice_bar_um(width_px: int, um_per_px: float, frac: float = 0.2) -> float:
+    """A round length (µm) close to `frac` of the image width, never wider than 40 % of it."""
+    target = width_px * frac * um_per_px
+    ok = [v for v in SCALE_BAR_UM if v / um_per_px <= 0.4 * width_px] or [SCALE_BAR_UM[0]]
+    return float(min(ok, key=lambda v: abs(math.log(v / max(target, 1e-9)))))
+
+
+def scale_bar_geometry(shape, um_per_px, length_um=None, position="bottom-right", thickness=None, font_px=None):
+    """Bar rectangle, label size and box in image pixels (shared by the burned-in and the editable versions)."""
+    H, W = shape[:2]
+    um = float(length_um or nice_bar_um(W, um_per_px))
+    L = um / um_per_px
+    th = float(thickness or max(3, round(min(H, W) / 110)))
+    fs = int(font_px or max(12, round(min(H, W) / 22)))
+    m = max(8, round(min(H, W) * 0.03))
+    pad = max(4, round(fs * 0.35))
+    box_w, box_h = L + 2 * pad, th + fs * 1.25 + 3 * pad
+    right, bottom = position.endswith("right"), position.startswith("bottom")
+    bx = W - m - box_w if right else m
+    by = H - m - box_h if bottom else m
+    return {"um": um, "L": L, "th": th, "fs": fs, "pad": pad, "box": (bx, by, box_w, box_h),
+            "bar": (bx + pad, by + pad, L, th), "label_center": (bx + box_w / 2, by + 2 * pad + th + fs * 0.6)}
+
+
+def scale_bar_label(um: float) -> str:
+    return f"{um / 1000:g} mm" if um >= 1000 else f"{um:g} µm"
+
+
+def _font(px):
+    from PIL import ImageFont
+    for name in ("arialbd.ttf", "Arial Bold.ttf", "DejaVuSans-Bold.ttf", "LiberationSans-Bold.ttf", "arial.ttf", "DejaVuSans.ttf"):
+        try:
+            return ImageFont.truetype(name, px)
+        except OSError:
+            continue
+    try:
+        return ImageFont.load_default(size=px)
+    except TypeError:
+        return ImageFont.load_default()
+
+
+def draw_scale_bar(img: np.ndarray, um_per_px: float, length_um=None, position="bottom-right", style="black on white box",
+                   label=True, thickness=None, font_px=None) -> np.ndarray:
+    """Burn a calibrated scale bar (with its length) into a copy of the image. Only the bar/box pixels change."""
+    from PIL import ImageDraw
+    if not um_per_px or um_per_px <= 0:
+        raise ValueError("The pixel size (µm per pixel) is needed for a scale bar.")
+    g = scale_bar_geometry(img.shape, um_per_px, length_um, position, thickness, font_px)
+    im = Image.fromarray(np.ascontiguousarray(img[..., :3]).astype(np.uint8)); d = ImageDraw.Draw(im)
+    fg = (255, 255, 255) if style.startswith("white") else (0, 0, 0)
+    if "box" in style:
+        bx, by, bw, bh = g["box"]
+        if not label:
+            bh = g["th"] + 2 * g["pad"]
+        d.rectangle([bx, by, bx + bw - 1, by + bh - 1], fill=(0, 0, 0) if style.startswith("white") else (255, 255, 255))
+    x, y, L, th = g["bar"]
+    d.rectangle([round(x), round(y), round(x + L) - 1, round(y + th) - 1], fill=fg)
+    if label:
+        f = _font(g["fs"]); txt = scale_bar_label(g["um"])
+        cx, cy = g["label_center"]
+        d.text((cx, cy), txt, fill=fg, font=f, anchor="mm")
+    return np.array(im)

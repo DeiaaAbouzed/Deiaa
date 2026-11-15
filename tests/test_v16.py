@@ -125,3 +125,51 @@ def test_advisor_ordinal_scores_and_unequal_variances():
     assert auto_analyze(df[df.Group.isin(["G1", "G3"])].copy(), "Score", "Group")[1] == "mannwhitney"
     res, aid = auto_analyze(df.copy(), "Infl", "Group")                       # normal groups, unequal SDs
     assert aid == "anova1" and "Games-Howell" in res.blocks[0].content["en"]
+
+
+def test_burned_scale_bar_round_trip():
+    from medstatix.imaging import marks as MK
+    for W, px in [(800, 0.5), (1040, 0.25), (2000, 1.0)]:
+        img = _tissue(int(W * 0.75), W)
+        um = IC.nice_bar_um(W, px)
+        out = IC.draw_scale_bar(img, px)
+        sb = MK.scale_bar(out)
+        assert sb and abs(sb["px"] - um / px) <= 1 and sb["um"] == um
+        changed = (out != img).any(2)
+        assert changed.mean() < 0.05 and not changed[: int(W * 0.5)].any()     # only the corner box changes
+    with pytest.raises(ValueError):
+        IC.draw_scale_bar(_tissue(), 0)
+
+
+def test_batch_scale_bar(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from medstatix.ui.histobatch import process_one
+    from medstatix.imaging import marks as MK
+    src = tmp_path / "a.png"
+    Image.fromarray(IC.load_image(os.path.join(SAMPLES, "HE_breast_carcinoma_1.png"))[:400, :500]).save(src)
+    res, _ = process_one(str(src), "auto", "camera", "standard", "None (enhance only)", 0.5, str(tmp_path), "png", 300, False,
+                         dict(position="bottom-left", style="black on white box", length_um=50))
+    assert res["scale_bar"] == "added"
+    sb = MK.scale_bar(IC.load_image(str(tmp_path / "a_processed.png")))
+    assert sb and abs(sb["px"] - 100) <= 1 and sb["um"] == 50
+    os.makedirs(tmp_path / "x")
+    res2, _ = process_one(str(tmp_path / "a_processed.png"), "auto", "camera", "standard", "None (enhance only)", 0, str(tmp_path / "x"),
+                          "png", 300, False, dict(position="bottom-right", style="black", length_um=None))
+    assert res2["scale_bar"] == "already on image" and abs(res2["um_per_px"] - 0.5) < 0.01
+
+
+def test_scale_bar_dialog_offscreen():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QGraphicsScene
+    app = QApplication.instance() or QApplication([])
+    from medstatix.ui.scalebar_ui import ScaleBarDialog, scale_bar_item
+    img = _with_scale_bar(_tissue(), 120)
+    d = ScaleBarDialog(None, img, 0.0)
+    d._read()
+    v = d.values()
+    if v["um_per_px"]:
+        assert abs(v["um_per_px"] - 50 / 120) < 0.01
+    v["um_per_px"] = 0.5
+    sc = QGraphicsScene()
+    grp, um = scale_bar_item(sc, img.shape, v)
+    assert um == IC.nice_bar_um(img.shape[1], 0.5) and len(grp.childItems()) == 3

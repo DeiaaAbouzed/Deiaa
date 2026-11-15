@@ -1,6 +1,6 @@
 ; Inno Setup script for MedStatix Pro
 #define MyAppName "MedStatix Pro"
-#define MyAppVersion "1.6.0"
+#define MyAppVersion "1.6.1"
 #define MyAppExe "MedStatixPro.exe"
 
 [Setup]
