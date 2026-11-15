@@ -14,7 +14,7 @@ import pandas as pd
 from scipy import stats
 
 from ..core.data import group_arrays, _level_order
-from ..core.result import Result, AnalysisError, fmt_p
+from ..core.result import Result, AnalysisError, Block, fmt_p
 from ..plots.figures import is_control
 from ..plots.groupfig import GroupFigSpec, render_panels
 from .common import pstr
@@ -99,6 +99,7 @@ def journal_table(df, variables, group, control="", model="", dispersion="Mean Â
     footer = {}
     notes = []
     models = {}
+    info = {}
     for v in variables:
         g = {str(k): a for k, a in group_arrays(d, v, group).items()}
         if model in g:
@@ -141,6 +142,7 @@ def journal_table(df, variables, group, control="", model="", dispersion="Mean Â
                 txt += _symbols(pairs.get((l, mdl)), "#")
             cells[l][v] = txt
         footer[v] = (test, post, stat, p_all, npar)
+        info[v] = dict(g=g, pairs=pairs, dec=dec, npar=npar, test=test, post=post, stat=stat, p=p_all)
     cols = [v for v in variables if v in footer]
     rows = []
     for l in levels:
@@ -170,6 +172,12 @@ def journal_table(df, variables, group, control="", model="", dispersion="Mean Â
                                   sig_mode="Versus reference group", sig_layout="Symbols above groups", ref1=ctrl, ref2=mdl or "",
                                   test_name=f"{test} followed by {post}"))
     res.table(tab, f"Effect of the treatments on {', '.join(cols)}" if len(cols) <= 4 else "Summary of all markers", note, p_columns=())
+    try:
+        from ..report.narrative import write
+        r_en, r_ar = write(info, levels, ctrl, mdl, sem)
+        res.blocks.append(Block("results", {"en": r_en, "ar": r_ar}))
+    except Exception:        # prose is a convenience; never block the table
+        pass
     detail = pd.DataFrame([{"Marker": v, "Test": footer[v][0], "Post hoc": footer[v][1], "Statistic": footer[v][2],
                             "p": footer[v][3]} for v in cols])
     res.table(detail, "Tests used for each marker", p_columns=("p",))

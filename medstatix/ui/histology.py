@@ -587,6 +587,11 @@ class HistologyStudio(QWidget):
         tb = QPushButton("🎓 " + T("Teach the AI on my slides…", "علّم القارئ على شرائحي…")); tb.clicked.connect(self.ai_teach)
         tb.setToolTip(T("Label nuclei on your own tissue and fine-tune the cell-type classifier", "سمِّ الأنوية على نسيجك ودرّب مصنِّف أنواع الخلايا"))
         f.addRow(tb)
+        cb = QPushButton("🩸 " + T("Teach congestion: paint red cells…", "علّم كشف الاحتقان: لوّن كرات الدم…"))
+        cb.clicked.connect(self.ai_teach_congestion)
+        cb.setToolTip(T("Paint red cells and look-alike tissue on ~10 images; the detector then learns your stain",
+                        "لوّن كرات الدم والأنسجة المشابهة على نحو 10 صور ليتعلم الكاشف صبغتك"))
+        f.addRow(cb)
         il.addWidget(g)
         g = QGroupBox(T("5 · Export", "٥ · التصدير")); f = QFormLayout(g)
         self.annot_on = QComboBox()
@@ -1140,6 +1145,13 @@ class HistologyStudio(QWidget):
                 return
         img = IC.measurement_image(self.original, self.steps_done) if self.steps_done else self.original
         TeachDialog(self, img, r, self.name, np_to_qimage).exec()
+
+    def ai_teach_congestion(self):
+        from .congestion_ui import CongestionTeachDialog
+        if self.original is None:
+            return
+        img = IC.measurement_image(self.original, self.steps_done) if self.steps_done else self.original
+        CongestionTeachDialog(self, img, self.name, np_to_qimage).exec()
 
     def ai_accept(self):
         """Keep the reviewed suggestions as ordinary annotations, add one label per finding, and recount."""

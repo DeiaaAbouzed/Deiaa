@@ -127,6 +127,10 @@ def results_to_docx(results: list[Result], path: str, include_methods=True):
                         p._p.get_or_add_pPr().append(OxmlElement("w:bidi"))
                         for run in p.runs:
                             rpr = run._r.get_or_add_rPr(); rtl = OxmlElement("w:rtl"); rpr.append(rtl)
+            elif b.kind == "results":
+                p = doc.add_paragraph(); p.add_run("Results section: ").bold = True
+                for k, para in enumerate(b.content.get("en", "").split("\n\n")):
+                    (p if k == 0 else doc.add_paragraph()).add_run(para)
             elif b.kind == "methods" and include_methods:
                 p = doc.add_paragraph()
                 p.add_run("Methods/Results text: ").bold = True

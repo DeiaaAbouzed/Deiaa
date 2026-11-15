@@ -44,10 +44,10 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: medstatix-v1.7.0
-          name: MedStatix Pro 1.7.0 (Windows)
+          tag_name: medstatix-v1.8.0
+          name: MedStatix Pro 1.8.0 (Windows)
           target_commitish: ${{ github.sha }}
-          body: "MedStatix Pro 1.7.0 – MedStatix Signature house style for every output: tables with an indigo header band, crimson rule, light zebra rows and significant p values highlighted, in the app and in Word (column widths fitted so numbers never wrap); Signature figure style and palette with neutral greys for control/sham/vehicle groups, crimson for the disease model and distinct cool hues for treatments. New Journal summary table (markers × groups, mean ± SD or median (IQR) with * versus control and # versus the disease model, each marker tested with the right ANOVA/Welch/Kruskal-Wallis procedure) with a matching multi-panel A/B/C figure, added automatically when Smart Analyze is run on several markers. Groups keep the order of the experimental design. Captions now state the exact test actually used (Welch ANOVA when variances differ), its statistic, df, p and effect size; correlation captions give r, 95% CI, p, r² and n, with the label placed away from the data. Windows installer (MedStatixPro-Setup-1.7.0.exe) and portable ZIP."
+          body: "MedStatix Pro 1.8.0 – (1) One-click Results section: the Journal summary table now writes a complete, ready-to-paste Results section in English and Arabic for every marker (model vs control with fold/% change, each treatment vs the model with % recovery and whether control values were restored, dose comparison, and an overall best-treatment sentence), also in Word and the manuscript draft. (2) Congestion learned from your brush: paint red cells and look-alike tissue on ~10 images and a colour-plus-texture pixel classifier learns your stain; validated image by image and used only when it beats the colour rule, disclosed in the methods. (3) Faster teaching of the cell reader: lasso labelling (Shift+drag), suggestions of the most informative uncertain nuclei, tubular and glomerular labels, and refitting of the rodent inflammatory gate on your labels (activated only when better on held-out images). (4) Batch study colour reference: every image of a study is matched to one reference image (global Reinhard transform, drawn marks preserved, disclosed in the methods). Windows installer (MedStatixPro-Setup-1.8.0.exe) and portable ZIP."
           files: |
             dist/installer/*.exe
             dist/MedStatixPro-portable-win64.zip

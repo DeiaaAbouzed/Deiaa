@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import math
 import os
 
 import numpy as np
@@ -32,23 +33,57 @@ def _store_path():
     return os.path.join(store_dir(), "user_nuclei_labels.npz")
 
 
-def load_examples():
+N_GATE = 6      # tissue_gate.features columns
+
+
+def load_examples(with_gate=False):
     p = _store_path()
     if not os.path.exists(p):
-        return np.zeros((0, len(CC.FEATURES)), np.float32), np.zeros(0, int), np.zeros(0, dtype=object)
+        out = (np.zeros((0, len(CC.FEATURES)), np.float32), np.zeros(0, int), np.zeros(0, dtype=object))
+        return out + (np.zeros((0, N_GATE)),) if with_gate else out
     z = np.load(p, allow_pickle=True)
-    return z["X"], z["y"], z["img"]
+    out = (z["X"], z["y"], z["img"])
+    if with_gate:
+        G = z["G"] if "G" in z.files else np.full((len(z["y"]), N_GATE), np.nan)
+        out = out + (G,)
+    return out
 
 
-def add_examples(X, y, image_name):
-    """Add (or replace) the labelled nuclei of one image."""
-    X0, y0, g0 = load_examples()
+def add_examples(X, y, image_name, G=None):
+    """Add (or replace) the labelled nuclei of one image. G: their rodent-gate features (context of the whole image)."""
+    X0, y0, g0, G0 = load_examples(with_gate=True)
     keep = g0 != image_name
-    X1 = np.concatenate([X0[keep], np.asarray(X, np.float32)]) if len(X) else X0[keep]
-    y1 = np.concatenate([y0[keep], np.asarray(y, int)]) if len(X) else y0[keep]
-    g1 = np.concatenate([g0[keep], np.array([image_name] * len(X), dtype=object)]) if len(X) else g0[keep]
-    np.savez_compressed(_store_path(), X=X1, y=y1, img=g1)
+    n = len(X)
+    Gn = np.asarray(G, float).reshape(n, N_GATE) if G is not None else np.full((n, N_GATE), np.nan)
+    X1 = np.concatenate([X0[keep], np.asarray(X, np.float32).reshape(n, -1)])
+    y1 = np.concatenate([y0[keep], np.asarray(y, int)])
+    g1 = np.concatenate([g0[keep], np.array([image_name] * n, dtype=object)])
+    G1 = np.concatenate([G0[keep], Gn])
+    np.savez_compressed(_store_path(), X=X1, y=y1, img=g1, G=G1)
     return len(y1)
+
+
+def uncertain(reading, k=25, exclude=()):
+    """Indices of the nuclei the reader is least sure about (most informative to label next): gate probability
+    closest to its decision point in rodent tissue, otherwise the highest entropy of the cell-type classifier."""
+    cells = reading.get("cells") or []
+    if not cells:
+        return []
+    if reading.get("G") is not None and any("p_infl_builtin" in c for c in cells):
+        u = -np.abs(np.array([c["p_infl"] for c in cells]) - 0.65)
+    else:
+        P = np.clip(CC.predict_proba(reading["X"]), 1e-6, 1)
+        u = -(P * np.log(P)).sum(1)
+    order = [int(i) for i in np.argsort(-u) if int(i) not in set(exclude)]
+    # spread the suggestions over the image: skip nuclei within 3 nuclear diameters of one already chosen
+    pick = []
+    for i in order:
+        c = cells[i]; r = 3 * 2 * (c["area_px"] / np.pi) ** 0.5
+        if all(np.hypot(c["x"] - cells[j]["x"], c["y"] - cells[j]["y"]) > r for j in pick):
+            pick.append(i)
+        if len(pick) >= k:
+            break
+    return pick
 
 
 def summary():
@@ -58,10 +93,11 @@ def summary():
 
 
 def clear_examples():
-    for p in (_store_path(), CC.user_weights_path()):
+    from . import tissue_gate as TG
+    for p in (_store_path(), CC.user_weights_path(), TG.user_path()):
         if os.path.exists(p):
             os.remove(p)
-    CC.reset()
+    CC.reset(); TG.reset()
 
 
 # ----------------------------------------------------------------------------- NumPy MLP
@@ -180,3 +216,87 @@ def train(epochs=300, lam=1e-2, progress=None):
             json.dump(out, fh)
         CC.reset()
     return report
+
+
+# ----------------------------------------------------------------------------- rodent gate refit
+
+
+def _lr(Z, y, l2=1e-2, iters=60):
+    """Class-balanced L2 logistic regression by Newton's method."""
+    A = np.c_[Z, np.ones(len(Z))]
+    w = np.zeros(A.shape[1])
+    sw = np.where(y == 1, 0.5 / max(1, (y == 1).sum()), 0.5 / max(1, (y == 0).sum())) * len(y)
+    R = l2 * np.eye(A.shape[1]); R[-1, -1] = 0
+    for _ in range(iters):
+        p = 1 / (1 + np.exp(-np.clip(A @ w, -30, 30)))
+        g = A.T @ (sw * (p - y)) + R @ w
+        Hs = (A * (sw * p * (1 - p))[:, None]).T @ A + R
+        step = np.linalg.solve(Hs + 1e-9 * np.eye(len(w)), g)
+        w -= step
+        if np.abs(step).max() < 1e-7:
+            break
+    return w[:-1], float(w[-1])
+
+
+def _best_f1(y, z):
+    best = (0.0, 0.0)
+    for t in np.quantile(z, np.linspace(0.02, 0.98, 49)):
+        pr = z >= t
+        tp = (pr & (y == 1)).sum(); f = 2 * tp / max(2 * tp + (pr & (y == 0)).sum() + (~pr & (y == 1)).sum(), 1)
+        best = max(best, (float(f), float(t)))
+    return best
+
+
+def train_gate():
+    """Refit the rodent inflammatory gate (inflammatory vs every other label) on the user's labelled nuclei.
+    Leave-one-image-out; the refitted gate is activated only when its held-out F1 at its own best threshold beats
+    the built-in gate on the same nuclei. Returns a report, or None when there are not enough gate-ready labels."""
+    from . import tissue_gate as TG
+    X, y, g, G = load_examples(with_gate=True)
+    ok = np.isfinite(G).all(1)
+    G, yb, g = G[ok], (y[ok] == 1).astype(int), g[ok]
+    imgs = sorted(set(g.tolist()))
+    if len(imgs) < 3 or yb.sum() < 15 or (yb == 0).sum() < 15:
+        return None
+    B = TG.builtin()
+    z_old = TG.logit(G, B)
+    z_new = np.zeros(len(yb))
+    for im in imgs:
+        te = g == im
+        if len(set(yb[~te].tolist())) < 2:
+            z_new[te] = z_old[te]; continue
+        mu, sd = G[~te].mean(0), G[~te].std(0) + 1e-6
+        c, b0 = _lr((G[~te] - mu) / sd, yb[~te])
+        z_new[te] = ((G[te] - mu) / sd) @ c + b0
+    t_old = math.log(B["threshold"] / (1 - B["threshold"]))
+    # the built-in gate is credited with the better of its own threshold and the best threshold on these nuclei
+    f_old_fixed = max(_best_f1_at(yb, z_old, t_old), _best_f1(yb, z_old)[0])
+    f_new, t_new = _best_f1(yb, z_new)
+    mu, sd = G.mean(0), G.std(0) + 1e-6
+    c, b0 = _lr((G - mu) / sd, yb)
+    rep = {"images": len(imgs), "nuclei": int(len(yb)), "inflammatory": int(yb.sum()),
+           "f1_builtin_gate": round(f_old_fixed, 3), "f1_user_gate": round(f_new, 3),
+           "auc_builtin_gate": round(_auc(yb, z_old), 3), "auc_user_gate": round(_auc(yb, z_new), 3)}
+    rep["activated"] = bool(f_new > f_old_fixed and rep["auc_user_gate"] >= rep["auc_builtin_gate"])
+    if rep["activated"]:
+        thr = float(1 / (1 + math.exp(-t_new)))
+        with open(TG.user_path(), "w", encoding="utf-8") as fh:
+            json.dump({"mean": mu.tolist(), "scale": sd.tolist(), "coef": c.tolist(), "intercept": b0,
+                       "threshold": min(max(thr, 0.05), 0.95), "report": rep,
+                       "trained_on": f"{len(yb)} user-labelled nuclei from {len(imgs)} images"}, fh)
+    elif os.path.exists(TG.user_path()):
+        os.remove(TG.user_path())
+    TG.reset()
+    return rep
+
+
+def _best_f1_at(y, z, t):
+    pr = z >= t
+    tp = (pr & (y == 1)).sum()
+    return float(2 * tp / max(2 * tp + (pr & (y == 0)).sum() + (~pr & (y == 1)).sum(), 1))
+
+
+def _auc(y, s):
+    order = np.argsort(s); r = np.empty(len(s)); r[order] = np.arange(1, len(s) + 1)
+    n1 = (y == 1).sum(); n0 = len(y) - n1
+    return float((r[y == 1].sum() - n1 * (n1 + 1) / 2) / max(n1 * n0, 1))

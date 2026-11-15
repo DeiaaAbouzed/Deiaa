@@ -19,16 +19,52 @@ PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
 _M = None
 
 
+_SRC = None
+
+
+def user_path():
+    from .training import store_dir
+    return os.path.join(store_dir(), "rodent_inflammation_user.json")
+
+
 def available():
     return os.path.exists(PATH)
 
 
+def reset():
+    global _M, _SRC
+    _M = None; _SRC = None
+
+
+def active_source():
+    model()
+    return _SRC
+
+
+def builtin():
+    with open(PATH, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
 def model():
-    global _M
+    """The gate refitted on the user's own labelled nuclei when one is active, otherwise the built-in gate."""
+    global _M, _SRC
     if _M is None:
-        with open(PATH, encoding="utf-8") as fh:
+        src, path = "built-in", PATH
+        try:
+            from ..core.settings import SETTINGS
+            if getattr(SETTINGS, "ai_user_model", True) and os.path.exists(user_path()):
+                src, path = "user", user_path()
+        except Exception:
+            pass
+        with open(path, encoding="utf-8") as fh:
             _M = json.load(fh)
+        _SRC = src
     return _M
+
+
+def logit(G, M):
+    return ((np.asarray(G, float) - np.array(M["mean"])) / np.array(M["scale"])) @ np.array(M["coef"]) + M["intercept"]
 
 
 def features(X, centroids_px, px_um, p_infl):
@@ -56,8 +92,7 @@ def score(X, centroids_px, px_um, p_infl, report_conf=0.65):
     M = model()
     if len(X) < 3:
         return np.zeros(len(X))
-    Z = (features(X, centroids_px, px_um, p_infl) - np.array(M["mean"])) / np.array(M["scale"])
-    z = Z @ np.array(M["coef"]) + M["intercept"]
+    z = logit(features(X, centroids_px, px_um, p_infl), M)
     t = M["threshold"]
     shift = math.log(t / (1 - t)) - math.log(report_conf / (1 - report_conf))
     return 1 / (1 + np.exp(-(z - shift)))

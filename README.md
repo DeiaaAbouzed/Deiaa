@@ -39,6 +39,12 @@ MedStatix Pro brings together what researchers usually spread across SPSS, Graph
 | Charts | Heatmap, volcano, radar, Kaplan–Meier, forest |
 | Sample size | **G*Power-style a priori / post hoc / sensitivity**, t-tests, proportions, ANOVA, correlation, log-rank (Schoenfeld), diagnostic sensitivity (Buderer), Mead's resource equation for animal studies |
 
+## New in v1.8
+- **One-click Results section** written from the Journal summary table (English and Arabic): model vs control with fold or % change, each treatment's % recovery and normalisation, dose comparison and an overall synthesis; also in Word and the manuscript draft.
+- **Congestion learned from a brush**: paint red cells and look-alike tissue on ~10 images; a colour + multi-scale texture pixel classifier (NumPy MLP) is validated leave-one-image-out and used only when it beats the colour rule (`imaging/rbc_learn.py`, `ui/congestion_ui.py`).
+- **Faster teaching of the cell reader**: lasso labelling, uncertainty-based suggestions, tubular/glomerular labels, and a rodent inflammatory gate refitted on the user's labels when it is better on held-out images.
+- **Study colour reference in batch processing**: every image matched to one reference image (global Reinhard), drawn marks preserved, disclosed in methods.txt.
+
 ## New in v1.7: MedStatix Signature outputs
 
 - **Signature tables** (Settings → Output; APA and SPSS remain available): indigo header band with a crimson rule, light zebra rows, significant p values in bold crimson, in the app and in Word with fitted column widths.

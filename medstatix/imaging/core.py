@@ -168,6 +168,24 @@ def op_reinhard(f, target_mean=None, target_std=None):
                                 "source_LAB_sd": sd.round(2).tolist(), "target_LAB_sd": ts.round(2).tolist()}
 
 
+def reference_stats(img: np.ndarray) -> dict:
+    """Colour statistics (CIELAB mean and SD of the tissue pixels) of a study reference image, used to give every image
+    of a study the same stain appearance with one global Reinhard transform."""
+    f = to_float(img)
+    lab = color.rgb2lab(f)
+    m = _tissue_mask(f)
+    if m.sum() < 100:
+        m = np.ones(m.shape, bool)
+    return {"target_mean": lab[m].mean(0).round(3).tolist(), "target_std": (lab[m].std(0) + 1e-6).round(3).tolist()}
+
+
+def match_reference(img: np.ndarray, ref: dict):
+    """Apply the study reference colour statistics to one image (global, disclosed: Reinhard et al., 2001)."""
+    step = {"op": "reinhard", "params": {"target_mean": ref["target_mean"], "target_std": ref["target_std"]}}
+    out, done = apply_pipeline(img, [step])[:2]
+    return out, done
+
+
 def macenko_vectors(img8, Io=240, alpha=1, beta=0.15):
     I = img8.reshape(-1, 3).astype(float)
     OD = -np.log((I + 1) / Io)
@@ -1071,7 +1089,19 @@ def inflammatory_candidates(img, min_area=20, max_area=220, min_circularity=0.72
     return out
 
 
-def congestion_area(img, sat_min=0.45):
+def congestion_area(img, sat_min=0.45, learned="auto"):
+    """RBC-rich area: the pixel classifier trained on the investigator's own brush strokes when one is active
+    (imaging.rbc_learn), otherwise the colour rule below."""
+    if learned:
+        from . import rbc_learn as RL
+        if RL.active():
+            tissue = color.rgb2gray(to_float(img)) < 0.88
+            rbc = RL.predict_mask(img) & tissue
+            return {"RBC-rich (congestion) area %": float(rbc.sum() / max(tissue.sum(), 1) * 100)}, rbc
+    return _congestion_rule(img, sat_min)
+
+
+def _congestion_rule(img, sat_min=0.45):
     """Suggest erythrocyte-rich (congested / haemorrhagic) areas in H&E: intensely eosinophilic red
     pixels (hue ≤ 15° or ≥ 340°, high saturation, low hematoxylin)."""
     f = to_float(img)

@@ -42,7 +42,14 @@ def list_images(root: str) -> list[str]:
     return sorted(out)
 
 
-def process_one(path, stain, source, level, kind, px, out_dir, fmt, dpi, save_ba, scale_bar=None):
+def study_reference(path, stain="auto", source="auto", level="standard"):
+    """Colour statistics of the study reference image, taken after the same one-click enhancement as every image."""
+    img = IC.load_image(path)
+    out = IC.publication_ready(img, stain, source, level)[0]
+    return IC.reference_stats(out)
+
+
+def process_one(path, stain, source, level, kind, px, out_dir, fmt, dpi, save_ba, scale_bar=None, reference=None):
     """Enhance one image (publication-ready), save it, and quantify on the native-colour measurement image.
     scale_bar: None, or dict(position, style, length_um) to burn a calibrated bar into the saved images (the pixel
     size is px, or the bar already on the image when px is 0)."""
@@ -54,6 +61,10 @@ def process_one(path, stain, source, level, kind, px, out_dir, fmt, dpi, save_ba
     if existing:
         scale_bar = None if scale_bar is None else "existing"            # never draw a second bar
     out, done, rep, steps, info = IC.publication_ready(img, stain, source, level)
+    if reference:      # one global colour transform so that all images of the study share the reference appearance
+        out, extra = IC.match_reference(out, reference)
+        done = list(done) + extra
+        IC.keep_drawn_marks(img, out)     # arrows and the scale-bar box stay black / white
     base = IC.apply_pipeline(img, [s for s in steps if s["op"] == "crop"])[0]
     name = os.path.splitext(os.path.basename(path))[0]
     if out_dir:
@@ -134,6 +145,15 @@ class BatchDialog(QDialog):
             r4.addWidget(w_)
         r4.addStretch(1)
         f.addRow(T("Scale bar", "مقياس الرسم"), r4)
+        r5 = QHBoxLayout()
+        self.match = QCheckBox(T("same colour and lighting for all images, matched to:", "لون وإضاءة موحّدان لكل الصور حسب الصورة المرجعية:"))
+        self.match.setChecked(True)
+        self.match.setToolTip(T("One global colour transform (Reinhard) per image, disclosed in the methods. Measurements always use the "
+                                "native colours.", "تحويل لوني كلي واحد لكل صورة (Reinhard) ويُذكر في نص الطرق. القياسات تتم دائمًا على الألوان الأصلية."))
+        self.ref = QLineEdit(); self.ref.setPlaceholderText(T("reference image (empty = the first image)", "الصورة المرجعية (فارغ = أول صورة)"))
+        rb = QPushButton("…"); rb.setFixedWidth(32); rb.clicked.connect(self.pick_ref)
+        r5.addWidget(self.match); r5.addWidget(self.ref, 1); r5.addWidget(rb)
+        f.addRow(T("Study colour", "لون الدراسة"), r5)
         lay.addLayout(f)
         self.bar = QProgressBar(); lay.addWidget(self.bar)
         self.tbl = QTableWidget(0, 0); lay.addWidget(self.tbl, 1)
@@ -145,6 +165,11 @@ class BatchDialog(QDialog):
         bb.addButton(T("Close", "إغلاق"), QDialogButtonBox.RejectRole)
         bb.accepted.connect(self.accept); bb.rejected.connect(self.reject)
         lay.addWidget(bb)
+
+    def pick_ref(self):
+        p, _ = QFileDialog.getOpenFileName(self, "", self.folder.text(), "Images (*.tif *.tiff *.png *.jpg *.jpeg *.bmp)")
+        if p:
+            self.ref.setText(p)
 
     def pick(self):
         d = QFileDialog.getExistingDirectory(self, "", self.folder.text())
@@ -160,6 +185,14 @@ class BatchDialog(QDialog):
             QMessageBox.information(self, "", T("No images found.", "لم يتم العثور على صور.")); return
         out_dir = os.path.join(root, "MedStatix_processed")
         os.makedirs(out_dir, exist_ok=True)
+        self.reference = None
+        if self.match.isChecked():
+            rp = self.ref.text().strip() or files[0]
+            try:
+                self.reference = study_reference(rp, self.stain.currentData(), self.source.currentData(), self.level.currentData())
+                self.reference["image"] = os.path.basename(rp)
+            except Exception as e:
+                QMessageBox.warning(self, "", T(f"Reference image could not be used: {e}", f"تعذر استخدام الصورة المرجعية: {e}"))
         self.bar.setRange(0, len(files)); self.run_b.setEnabled(False)
         rows = []
         for i, p in enumerate(files):
@@ -177,6 +210,10 @@ class BatchDialog(QDialog):
         self.rows.to_csv(os.path.join(out_dir, "batch_results.csv"), index=False, encoding="utf-8-sig")
         with open(os.path.join(out_dir, "methods.txt"), "w", encoding="utf-8") as f:
             f.write(IC.EditLog("batch", self.last_steps).methods_text())
+            if getattr(self, "reference", None):
+                f.write(f" All images were colour-matched to the same reference image ({self.reference['image']}) with one "
+                        "global Reinhard transform per image so that the groups are shown with identical stain appearance; "
+                        "quantification used the native colours.")
         self.show_table(self.rows)
         self.run_b.setEnabled(True); self.send_b.setEnabled(True)
         QMessageBox.information(self, "", T("Saved processed images, edit logs and batch_results.csv in:",
@@ -189,7 +226,8 @@ class BatchDialog(QDialog):
                             self.kind.currentText(), self.px.value(), out_dir, self.fmt.currentData(), self.dpi.currentData(),
                             self.ba.isChecked(),
                             dict(position=self.sb_pos.currentData(), style=self.sb_style.currentData(),
-                                 length_um=self.sb_len.value() or None) if self.sbar.isChecked() else None)
+                                 length_um=self.sb_len.value() or None) if self.sbar.isChecked() else None,
+                            {k: v for k, v in self.reference.items() if k != "image"} if getattr(self, "reference", None) else None)
             while not fut.done():
                 QApplication.processEvents(); time.sleep(0.03)
         return fut.result()

@@ -118,6 +118,8 @@ def build_manuscript(results: list[Result], path: str, journal: str = "", width_
                     if s not in meth_sents:
                         meth_sents.append(s)
                 entry["res_sents"] += r
+            elif b.kind == "results":
+                entry["prose"] = b.content.get("en", "")
             elif b.kind == "interpret" and not str(b.content.get("en", "")).startswith("Smart advisor"):
                 entry["interp"] = _interp(b, lang if lang in ("en", "ar", "both") else "en")
             elif b.kind == "table":
@@ -152,6 +154,10 @@ def build_manuscript(results: list[Result], path: str, journal: str = "", width_
             refs.append("Table " + ", ".join(str(n) for n, _ in e["tables"]))
         if e["figures"]:
             refs.append("Figure " + ", ".join(str(n) for n, _ in e["figures"]))
+        if e.get("prose"):     # a written Results narrative replaces the per-analysis interpretation
+            for para in e["prose"].split("\n\n"):
+                doc.add_paragraph(re.sub(r"\bp ([=<])", f"{pw} \\1", para))
+            continue
         txt = e["interp"][0] or " ".join(e["res_sents"])
         txt = re.sub(r"\bp = <", "p <", txt)
         txt = re.sub(r"\bp ([=<])", f"{pw} \\1", txt)

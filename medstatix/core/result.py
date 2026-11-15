@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 APP_NAME = "MedStatix Pro"
-APP_VERSION = "1.7.0"
+APP_VERSION = "1.8.0"
 
 
 # ----------------------------------------------------------------------------
@@ -180,6 +180,14 @@ class Result:
                 d = ' dir="rtl"' if lang == "ar" else ""
                 head = "🧠 التفسير الذكي" if lang == "ar" else "🧠 Smart interpretation"
                 parts.append(_card(f'<b>{head}:</b><br>{html.escape(txt).replace(chr(10), "<br>")}', "#EEF6FF", "#1F6FEB", "interpret", d))
+            elif b.kind == "results":
+                from .settings import SETTINGS
+                body = html.escape(b.content.get("en", "")).replace(chr(10) + chr(10), "<br><br>")
+                parts.append(_card(f'<p dir="ltr" align="left" style="margin:0"><b>Results section (ready to paste):</b><br>{body}</p>',
+                                   "#F6F2FB", "#6A4C93", "results"))
+                if SETTINGS.language == "ar" and b.content.get("ar"):
+                    parts.append(_card(f'<p dir="rtl" align="right" style="margin:0"><b>ملخص النتائج بالعربية:</b><br>'
+                                       f'{html.escape(b.content["ar"]).replace(chr(10), "<br>")}</p>', "#F6F2FB", "#6A4C93", "results"))
             elif b.kind == "methods":
                 parts.append(_card(f'<p dir="ltr" align="left" style="margin:0"><b>Methods / Results text (ready to paste):</b><br>{html.escape(b.content)}</p>', "#F3FAF3", "#2E8B57", "methods"))
             elif b.kind == "table":

@@ -202,6 +202,11 @@ def read_image(img, px_um=0.0, stain="auto", min_conf=0.65, min_focus=8, focus_u
                 c["grade"] = 3 if d >= dab_used[2] else 2 if d >= dab_used[1] else 1 if d >= dab_used[0] else 0
             cells.append(c); feats.append(X[i])
     glom = []
+    G = None
+    if len(cells) >= 3 and stain == "H&E":
+        # gate features of every nucleus, kept so that labels made in the teaching tool can refit the rodent gate
+        from . import tissue_gate as TG
+        G = TG.features(np.array(feats), [[c["y"], c["x"]] for c in cells], px_um or 0.25 * s, [c["p_infl"] for c in cells])
     if cells and stain == "H&E" and profile != "general":
         from . import tissue_gate as TG
         px_eff = px_um or 0.25 * s
@@ -243,6 +248,7 @@ def read_image(img, px_um=0.0, stain="auto", min_conf=0.65, min_focus=8, focus_u
             conf = float(np.clip(np.mean([infl[i]["p"] for i in idx]) * min(1.0, len(idx) / (2 * min_focus) + 0.5), 0, 1))
             foci.append({"n": len(idx), "hull": hull, "conf": conf, "y": float(pts[idx, 0].mean()), "x": float(pts[idx, 1].mean())})
     # congestion and vacuoles
+    from . import rbc_learn as RL
     tissue = IC._tissue_mask(img, 0.85) & ~mk['mask']
     cong = []
     if stain == "H&E":
@@ -289,9 +295,10 @@ def read_image(img, px_um=0.0, stain="auto", min_conf=0.65, min_focus=8, focus_u
     if area_mm2:
         S["Tissue area (mm²)"] = area_mm2
     return {"stain": stain, "scale": s, "cells": cells, "inflammatory": infl, "foci": foci, "congestion": cong,
-            "vacuoles": vac, "summary": S, "X": np.array(feats, np.float32).reshape(-1, len(CC.FEATURES)), "median_nucleus_px": med_area, "dab_thresholds": dab_used,
+            "vacuoles": vac, "summary": S, "X": np.array(feats, np.float32).reshape(-1, len(CC.FEATURES)), "G": G, "median_nucleus_px": med_area, "dab_thresholds": dab_used,
             "methods": METHOD_TEXT.format(min_focus=min_focus, eps_um=int(focus_um)) + (GATE_TEXT if profile != "general" and stain == "H&E" else "")
-            + (CALIB_TEXT.format(px=px_um) if calib == "scale bar" else ""),
+            + (CALIB_TEXT.format(px=px_um) if calib == "scale bar" else "")
+            + ((" " + RL.methods_text()) if (stain == "H&E" and RL.active()) else ""),
             "px_um": px_um, "calibration": calib, "marks": mk, "glomeruli": glom, "profile": profile}
 
 
