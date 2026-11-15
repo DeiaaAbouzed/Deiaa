@@ -152,6 +152,7 @@ def read_image(img, px_um=0.0, stain="auto", min_conf=0.65, min_focus=8, focus_u
         _, nu2, _, _, lab2 = NU.detect(img, scale=s, prob_thresh=0.5, keep_scaled=True, detect_on=_hematoxylin_view(img))
         lab, nu, lab_s = _merge(lab_s, nu, lab2, nu2, s, img.shape[:2])
     cells = []
+    feats = []
     dab_used = None
     if nu:
         # features are measured at the working scale (nuclei at the size the networks were trained on)
@@ -174,7 +175,7 @@ def read_image(img, px_um=0.0, stain="auto", min_conf=0.65, min_focus=8, focus_u
             if stain == "IHC":
                 d = float(dab_mean[i]); c["dab"] = d
                 c["grade"] = 3 if d >= dab_used[2] else 2 if d >= dab_used[1] else 1 if d >= dab_used[0] else 0
-            cells.append(c)
+            cells.append(c); feats.append(X[i])
     n_cells = len(cells)
     med_area = float(np.median([c["area_px"] for c in cells])) if cells else 0.0
     # inflammatory cells (in IHC the classifier is less reliable: show only in H&E)
@@ -232,7 +233,7 @@ def read_image(img, px_um=0.0, stain="auto", min_conf=0.65, min_focus=8, focus_u
     if area_mm2:
         S["Tissue area (mm²)"] = area_mm2
     return {"stain": stain, "scale": s, "cells": cells, "inflammatory": infl, "foci": foci, "congestion": cong,
-            "vacuoles": vac, "summary": S, "median_nucleus_px": med_area, "dab_thresholds": dab_used,
+            "vacuoles": vac, "summary": S, "X": np.array(feats, np.float32).reshape(-1, len(CC.FEATURES)), "median_nucleus_px": med_area, "dab_thresholds": dab_used,
             "methods": METHOD_TEXT.format(min_focus=min_focus, eps_um=int(focus_um))}
 
 

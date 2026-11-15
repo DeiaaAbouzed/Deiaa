@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 APP_NAME = "MedStatix Pro"
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.5.0"
 
 
 # ----------------------------------------------------------------------------
@@ -146,9 +146,11 @@ class Result:
     @staticmethod
     def format_df(df: pd.DataFrame, p_columns=()) -> pd.DataFrame:
         out = df.copy()
+        spss = _spss()
         for c in out.columns:
             if str(c) in p_columns:
-                out[c] = [fmt_p(v) if isinstance(v, (float, int, np.floating)) else ("—" if v is None else str(v))
+                f = _fmt_p_spss if spss else fmt_p
+                out[c] = [f(v) if isinstance(v, (float, int, np.floating)) else ("—" if v is None else str(v))
                           for v in out[c]]
             else:
                 out[c] = [fmt_num(v) for v in out[c]]
@@ -215,9 +217,24 @@ def _card(inner, bg, edge, cls, attrs=""):
             f'<td width="5" bgcolor="{edge}"></td><td bgcolor="{bg}" style="padding:8px 12px;color:#1D2433">{inner}</td></tr></table>')
 
 
+def _spss():
+    from .settings import SETTINGS
+    return getattr(SETTINGS, "table_style", "APA") == "SPSS"
+
+
+def _fmt_p_spss(p):
+    """SPSS-style significance: three decimals without the leading zero; values below .001 shown as <.001."""
+    if p is None or (isinstance(p, float) and math.isnan(p)):
+        return ""
+    return "<.001" if p < 0.001 else f"{p:.3f}".lstrip("0")
+
+
 def _df_to_html(df: pd.DataFrame, caption: str, note: str) -> str:
     show_index = not isinstance(df.index, pd.RangeIndex)
-    rows = ['<table class="apa" cellspacing="0" cellpadding="4">']
+    if _spss():
+        rows = ['<table class="spss" cellspacing="0" cellpadding="4" border="1">']
+    else:
+        rows = ['<table class="apa" cellspacing="0" cellpadding="4">']
     rows.append(f'<caption>{html.escape(caption)}</caption>')
     head = "<tr>"
     if show_index:

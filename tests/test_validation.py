@@ -162,6 +162,20 @@ def test_power():  # R pwr / power.t.test / power.prop.test
     check("n per group p .50 vs .75", r.tables[1].content.iloc[0]["Value"], 77, 0, "R power.prop.test (76.65)")
 
 
+def test_bayes_factor():  # R BayesFactor::ttestBF (default r = √2/2)
+    from medstatix.analyses.bayes import jzs_bf_t
+    check("JZS BF10 paired t (sleep)", jzs_bf_t(-4.0621, 10, 9), 17.2589, 0.01, "R BayesFactor ttestBF paired")
+    check("JZS BF10 independent t (sleep)", jzs_bf_t(-1.8608, 5, 18), 1.2659, 0.01, "R BayesFactor ttestBF")
+
+
+def test_gpower():  # G*Power 3.1 a priori, α = .05, power = .80, two-tailed
+    from medstatix.analyses.gpower import solve_n, FAMILIES as F
+    for i, es, k, ref, lab in [(0, .5, 2, 128, "t independent d = 0.5"), (1, .5, 2, 34, "t paired dz = 0.5"),
+                               (2, .25, 4, 180, "ANOVA f = 0.25, k = 4"), (3, .15, 3, 77, "Regression f² = 0.15, 3 predictors"),
+                               (4, .3, 1, 88, "χ² w = 0.3, df = 1"), (6, .5, 2, 126, "Two proportions h = 0.5")]:
+        check(f"G*Power N: {lab}", solve_n(F[i], es, .05, .8, k, 1, 2)[0], ref, 0, "G*Power 3.1.9 (total N)")
+
+
 def test_all_analyses_run():
     """Smoke test: every analysis runs end-to-end on the simulated trial dataset."""
     t = DS["Clinical trial (simulated)"]

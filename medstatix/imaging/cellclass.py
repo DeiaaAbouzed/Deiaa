@@ -93,11 +93,38 @@ def features(img, lab, nuclei, scale=1.0):
 _W = None
 
 
+_W_SRC = None
+
+
+def user_weights_path():
+    from .training import store_dir
+    return os.path.join(store_dir(), "nucleus_types_user.json")
+
+
+def active_source():
+    """'user' when a model fine-tuned on the user's own slides is active, else 'built-in'."""
+    return "user" if _W_SRC == "user" else "built-in"
+
+
+def reset():
+    global _W, _W_SRC
+    _W = None; _W_SRC = None
+
+
 def load():
-    global _W
+    global _W, _W_SRC
     if _W is None:
-        with open(WEIGHTS, encoding="utf-8") as fh:
+        src, path = "built-in", WEIGHTS
+        try:
+            from ..core.settings import SETTINGS
+            up = user_weights_path()
+            if getattr(SETTINGS, "ai_user_model", True) and os.path.exists(up):
+                src, path = "user", up
+        except Exception:
+            pass
+        with open(path, encoding="utf-8") as fh:
             _W = json.load(fh)
+        _W_SRC = src
         _W["layers"] = [(np.asarray(w, np.float32), np.asarray(b, np.float32)) for w, b in _W["layers"]]
         _W["mean"] = np.asarray(_W["mean"], np.float32); _W["scale"] = np.asarray(_W["scale"], np.float32)
     return _W

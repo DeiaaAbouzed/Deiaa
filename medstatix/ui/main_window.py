@@ -70,6 +70,8 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ UI construction
     def build(self):
+        if getattr(self, "_assistant", None) is not None:
+            self._assistant.close(); self._assistant.deleteLater(); self._assistant = None
         rtl = SETTINGS.language == "ar"
         QApplication.instance().setLayoutDirection(Qt.RightToLeft if rtl else Qt.LeftToRight)
         QApplication.instance().setStyleSheet(stylesheet(SETTINGS.theme, rtl))
@@ -120,6 +122,7 @@ class MainWindow(QMainWindow):
         self.a_paste = self._act("📋  " + tr("paste"), self.paste_data, "Ctrl+Shift+V")
         self.a_smart = self._act("🧠  " + tr("smart"), self.smart_analyze, "Ctrl+M")
         self.a_wizard = self._act("🧭  " + tr("wizard"), self.wizard, "Ctrl+W")
+        self.a_assist = self._act("🤖  " + ("المساعد الإحصائي" if SETTINGS.language == "ar" else "Assistant"), self.open_assistant, "Ctrl+K")
         self.a_recs = self._act("⭐  " + ("التوصيات" if SETTINGS.language == "ar" else "Recommendations"),
                                 lambda: self._need_data() and self.import_assistant([]), "Ctrl+R")
         self.a_word = self._act("📝  " + tr("export_word"), lambda: self.export("docx"), "Ctrl+E")
@@ -165,7 +168,7 @@ class MainWindow(QMainWindow):
         d.addAction(self._act(tr("add_row"), self.add_row)); d.addAction(self._act(tr("del_row"), self.del_rows))
         d.addAction(self._act(tr("add_col"), self.add_col)); d.addAction(self._act(tr("del_col"), self.del_col))
         a = mb.addMenu(tr("analyze"))
-        a.addAction(self.a_smart); a.addAction(self.a_wizard); a.addAction(self.a_recs)
+        a.addAction(self.a_smart); a.addAction(self.a_assist); a.addAction(self.a_wizard); a.addAction(self.a_recs)
         a.addSeparator()
         for cid, en, ar in CATEGORIES:
             sub = a.addMenu(ar if SETTINGS.language == "ar" else en)
@@ -183,10 +186,20 @@ class MainWindow(QMainWindow):
         t = mb.addMenu("🧰  " + ("أدوات" if SETTINGS.language == "ar" else "Tools"))
         for x in (self.a_tmpl, self.a_animal):
             t.addAction(x)
+        t.addSeparator()
+        t.addAction(self._act("🧬  " + ("كاشف الصور المكررة والمعاد استخدامها…" if SETTINGS.language == "ar"
+                                        else "Duplicate / re-used image detector…"), self.duplicate_detector))
+        t.addSeparator()
+        t.addAction(self._act("Ⓡ  " + ("تحقق من آخر تحليل في R…" if SETTINGS.language == "ar" else "Verify last analysis in R…"),
+                              self.verify_in_r))
+        t.addAction(self._act("Ⓡ  " + ("وحدة R (تشغيل كود R على البيانات)…" if SETTINGS.language == "ar" else "R console (run R code on the data)…"),
+                              self.r_console))
         v = mb.addMenu(tr("view"))
         v.addAction(self.a_settings); v.addAction(self.a_lang)
         h = mb.addMenu(tr("help"))
         h.addAction(self._act("✔  " + tr("validation"), self.show_validation))
+        h.addAction(self._act("⬆  " + ("البحث عن تحديثات…" if SETTINGS.language == "ar" else "Check for updates…"),
+                              lambda: self.check_updates(silent=False)))
         h.addAction(self._act("ℹ  " + tr("about"), self.about))
 
     def _build_toolbar(self):
@@ -198,6 +211,7 @@ class MainWindow(QMainWindow):
         tb.addSeparator()
         tb.addAction(self.a_smart)
         tb.widgetForAction(self.a_smart).setObjectName("primary")
+        tb.addAction(self.a_assist)
         tb.addAction(self.a_wizard)
         tb.addAction(self.a_recs)
         tb.addSeparator()
@@ -392,6 +406,17 @@ class MainWindow(QMainWindow):
                 df, report = SI.smart_read_excel(path, sheet)
             elif ext in (".csv", ".txt", ".tsv"):
                 df, report = SI.smart_read_csv(path)
+            elif ext == ".pzfx":
+                from ..core.pzfx import list_tables, read_pzfx
+                tabs = list_tables(path); idx = 0
+                if len(tabs) > 1:
+                    QApplication.restoreOverrideCursor()
+                    items = [f"{t[1]}  ({t[2]})" for t in tabs]
+                    it, ok = QInputDialog.getItem(self, "Prism", "اختر جدول البيانات:" if A else "Choose the data table:", items, 0, False)
+                    if not ok:
+                        return
+                    idx = items.index(it); QApplication.setOverrideCursor(Qt.WaitCursor)
+                df, _ = read_pzfx(path, idx); report = []
             else:
                 df, _ = load_file(path)
                 report = []
@@ -448,7 +473,7 @@ class MainWindow(QMainWindow):
 
     def save_file(self):
         path, _ = QFileDialog.getSaveFileName(self, tr("save"), self.dataset_name.rsplit(".", 1)[0] or "data",
-                                              "Excel (*.xlsx);;CSV (*.csv);;SPSS (*.sav);;Stata (*.dta)")
+                                              "Excel (*.xlsx);;CSV (*.csv);;SPSS (*.sav);;GraphPad Prism (*.pzfx);;Stata (*.dta)")
         if path:
             try:
                 save_file(self.model.df(), path)
@@ -600,8 +625,15 @@ class MainWindow(QMainWindow):
             optional = {p.name for p in REGISTRY[aid].params if p.optional}
             kw = {k: v for k, v in kwargs.items() if not (k in optional and (v is None or v == []))}
             df = self.df.copy()
-            res = run(aid, df, **kw)
-            self.entries.append({"result": res, "aid": aid, "kwargs": kw, "df": df})
+            if SETTINGS.auto_fallback:
+                from ..core.fallback import run_with_fallback, suggest
+                results = run_with_fallback(aid, df, kw, run)
+                self.entries.append({"result": results[0], "aid": aid, "kwargs": kw, "df": df})
+                if len(results) > 1:
+                    aid2, kw2 = suggest(aid, df, kw)[:2]
+                    self.entries.append({"result": results[1], "aid": aid2, "kwargs": kw2, "df": df})
+            else:
+                self.entries.append({"result": run(aid, df, **kw), "aid": aid, "kwargs": kw, "df": df})
             self.after_result()
         except Exception as e:
             QApplication.restoreOverrideCursor()
@@ -1173,34 +1205,129 @@ class MainWindow(QMainWindow):
         super().closeEvent(e)
 
     # ------------------------------------------------------------------ help
-    def show_validation(self):
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+    def open_assistant(self):
+        from .assistant_ui import AssistantDialog
+        if getattr(self, "_assistant", None) is None:
+            self._assistant = AssistantDialog(self)
+        self._assistant.show(); self._assistant.raise_(); self._assistant.activateWindow()
+
+    # ------------------------------------------------------------------ updates
+    def startup_update_check(self):
+        if SETTINGS.check_updates and not os.environ.get("MEDSTATIX_NO_UPDATE"):
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(4000, lambda: self.check_updates(silent=True))
+
+    def check_updates(self, silent=False):
+        """Ask GitHub for the newest release in a worker thread; offer to download and install it."""
+        import threading
+        from PySide6.QtCore import QObject, Signal
+
+        class _Bridge(QObject):
+            done = Signal(object, object)
+        self._upd_bridge = _Bridge()
+        self._upd_bridge.done.connect(lambda info, err: self._update_found(info, err, silent))
+
+        def work():
+            from ..core import updater
+            try:
+                self._upd_bridge.done.emit(updater.check_latest(), None)
+            except Exception as e:  # offline, proxy, rate limit
+                self._upd_bridge.done.emit(None, e)
+        threading.Thread(target=work, daemon=True).start()
+        if not silent:
+            self.statusBar().showMessage("…", 3000)
+
+    def _update_found(self, info, err, silent):
+        from ..core import updater
+        A = SETTINGS.language == "ar"
+        if err is not None or info is None:
+            if not silent:
+                QMessageBox.information(self, "MedStatix", ("تعذّر الاتصال بخادم التحديثات. تأكد من الإنترنت ثم أعد المحاولة."
+                                                            if A else "Could not reach the update server. Check the internet connection.")
+                                        + (f"\n\n{err}" if err else ""))
+            return
+        if not updater.is_newer(info["version"], APP_VERSION):
+            if not silent:
+                QMessageBox.information(self, "MedStatix", (f"لديك أحدث إصدار ({APP_VERSION})." if A
+                                                            else f"You have the latest version ({APP_VERSION})."))
+            return
+        size = f" ({info['size'] / 1e6:.0f} MB)" if info.get("size") else ""
+        msg = (f"يتوفر إصدار جديد: {info['version']} (الإصدار الحالي {APP_VERSION}).\n\nهل تريد تنزيله{size} وتثبيته الآن؟ "
+               f"سيُغلق البرنامج أثناء التثبيت، ولن تتأثر ملفاتك وإعداداتك." if A else
+               f"A new version is available: {info['version']} (installed {APP_VERSION}).\n\nDownload{size} and install it now? "
+               f"MedStatix will close during installation; your files and settings are kept.")
+        box = QMessageBox(QMessageBox.Information, "MedStatix", msg, QMessageBox.Yes | QMessageBox.No, self)
+        if info.get("notes"):
+            box.setDetailedText(info["notes"])
+        if box.exec() != QMessageBox.Yes:
+            return
+        if not info.get("url") or os.name != "nt":
+            from PySide6.QtGui import QDesktopServices
+            QDesktopServices.openUrl(QUrl(info["page"])); return
+        from PySide6.QtWidgets import QProgressDialog
+        dlg = QProgressDialog(("جارٍ تنزيل التحديث…" if A else "Downloading update…"), ("إلغاء" if A else "Cancel"), 0, 100, self)
+        dlg.setWindowModality(Qt.WindowModal); dlg.setMinimumDuration(0)
+
+        def prog(done, total):
+            if total:
+                dlg.setValue(int(100 * done / total))
+            QApplication.processEvents()
+            return not dlg.wasCanceled()
         try:
-            import importlib.util
-            here = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-            path = os.path.join(here, "tests", "test_validation.py")
-            if not os.path.exists(path):
-                path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "validation", "test_validation.py")
-            spec = importlib.util.spec_from_file_location("mval", path)
-            mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
-            mod.RESULTS.clear()
-            for name in dir(mod):
-                if name.startswith("test_") and name != "test_all_analyses_run":
-                    try:
-                        getattr(mod, name)()
-                    except AssertionError:
-                        pass
-            rows = "".join(f"<tr><td style='text-align:left'>{n}</td><td>{g:.5f}</td><td>{r:.5f}</td>"
-                           f"<td style='color:{'#2E8B57' if s == 'PASS' else '#C0392B'}'><b>{s}</b></td><td>{src}</td></tr>"
-                           for n, g, r, t, s, src in mod.RESULTS)
-            npass = sum(1 for r in mod.RESULTS if r[4] == "PASS")
-            html = (f"<h2>Validation against reference software</h2><p><b>{npass}/{len(mod.RESULTS)}</b> checks passed.</p>"
-                    f"<table class='apa' cellpadding='4'><tr><th>Check</th><th>MedStatix</th><th>Reference</th><th>Result</th><th>Source</th></tr>{rows}</table>")
+            path = updater.download(info["url"], info.get("asset"), prog)
+        except Exception as e:
+            dlg.close(); QMessageBox.warning(self, "MedStatix", str(e)); return
+        dlg.close()
+        if not path:
+            return
+        import subprocess
+        self._save_settings()
+        subprocess.Popen([path, "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"], close_fds=True)
+        QApplication.quit()
+
+    def r_console(self, code="", df=None, title=None):
+        from .rconsole import RConsole
+        RConsole(self.df if df is None else df, code, self, title).exec()
+
+    def verify_in_r(self):
+        from ..core import rbridge
+        A = SETTINGS.language == "ar"
+        for e in reversed(self.entries):
+            if e.get("df") is not None and not str(e.get("aid", "")).startswith("__"):
+                code = rbridge.r_code(e["aid"], e["kwargs"])
+                if code:
+                    self.r_console(code, e["df"], ("التحقق في R: " if A else "Verify in R: ") + e["result"].title)
+                    return
+                break
+        QMessageBox.information(self, "R", "آخر تحليل غير مدعوم بعد في جسر R. المدعوم: اختبارات t، مان-ويتني، ويلكوكسون، "
+                                "ANOVA، كروسكال-واليس، الارتباط، الانحدار الخطي واللوجستي، النماذج المختلطة وGEE." if A else
+                                "The last analysis is not yet covered by the R bridge. Supported: t-tests, Mann–Whitney, Wilcoxon, "
+                                "ANOVA, Kruskal–Wallis, correlation, linear/logistic regression, mixed models and GEE.")
+
+    def duplicate_detector(self):
+        from .forensics_ui import DuplicateDialog
+        DuplicateDialog(self, self._histo_result).exec()
+
+    def show_validation(self):
+        from ..report import validation as V
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        rows = []
+        try:
+            rows = V.run_checks()
+            html = V.results_html(rows)
         except Exception as e:
             html = f"<p>Validation suite not available: {e}</p>"
         finally:
             QApplication.restoreOverrideCursor()
         AboutDialog(f"<style>{output_css()}</style>" + html, self).exec()
+        if rows:
+            A = SETTINGS.language == "ar"
+            if QMessageBox.question(self, "Validation", "حفظ تقرير التحقق كملف Word؟" if A else "Save the validation report as a Word file?") \
+                    == QMessageBox.Yes:
+                path, _ = QFileDialog.getSaveFileName(self, "Word", "MedStatix_validation_report.docx", "Word (*.docx)")
+                if path:
+                    V.export_docx(path, rows)
+                    self.statusBar().showMessage(path, 6000)
 
     def about(self):
         cats = "".join(f"<li><b>{(ar if SETTINGS.language == 'ar' else en)}</b>: " +

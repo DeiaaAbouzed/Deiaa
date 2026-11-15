@@ -21,7 +21,9 @@ CATEGORIES = [
     ("agreement", "Agreement & reliability", "الاتفاق والثبات"),
     ("pharmtox", "Pharmacology & toxicology", "الفارماكولوجي والسموم"),
     ("multivariate", "Multivariate", "التحليل متعدد المتغيرات"),
+    ("bayes", "Bayesian statistics", "الإحصاء البايزي"),
     ("meta", "Meta-analysis", "التحليل التجميعي"),
+    ("charts", "Chart library", "مكتبة الرسوم"),
     ("power", "Sample size & power", "حجم العينة والقوة"),
 ]
 

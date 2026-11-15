@@ -2,7 +2,7 @@
 
 **Advanced medical & pharmaceutical biostatistics for the desktop. | منصة الإحصاء الحيوي الطبي والصيدلي المتقدم**
 
-MedStatix Pro brings together what researchers usually spread across SPSS, GraphPad Prism, R, Stata, MedCalc and G*Power. It has 44 validated analyses, a smart advisor that picks the right test and explains the result in Arabic or English, figures in the style of top (Q1) journals, and Word/Excel tables ready for publication.
+MedStatix Pro brings together what researchers usually spread across SPSS, GraphPad Prism, R, Stata, MedCalc and G*Power. It has 53 validated analyses, a smart advisor that picks the right test and explains the result in Arabic or English, figures in the style of top (Q1) journals, and Word/Excel tables ready for publication.
 
 ---
 
@@ -19,7 +19,7 @@ MedStatix Pro brings together what researchers usually spread across SPSS, Graph
 | 🛠 **إدارة البيانات** | حساب متغيرات جديدة، وتحويل لوغاريتمي أو معياري، وإعادة الترميز، وتصفية الحالات، وتحويل البيانات من الشكل العريض إلى الطويل. |
 | 🌍 **واجهة عربية/إنجليزية** | دعم كامل لاتجاه الكتابة من اليمين لليسار، مع وضع فاتح وداكن. |
 
-## Analysis catalogue (44)
+## Analysis catalogue (53)
 
 | Category | Analyses |
 |---|---|
@@ -35,7 +35,23 @@ MedStatix Pro brings together what researchers usually spread across SPSS, Graph
 | Pharmacology & toxicology | **Probit/logit LD50 with Fieller limits**, **4PL EC50/IC50** (Prism-style), Michaelis-Menten, **non-compartmental PK** (Cmax, Tmax, AUC, t½, CL/F, Vz/F) |
 | Multivariate | PCA (scree, biplot), hierarchical clustering |
 | Meta-analysis | FE/RE (REML, DL), OR/RR/MD/SMD/generic, I², τ², prediction interval, Egger, leave-one-out, forest and funnel plots |
-| Sample size | t-tests, proportions, ANOVA, correlation, log-rank (Schoenfeld), diagnostic sensitivity (Buderer), Mead's resource equation for animal studies |
+| Bayesian | JZS Bayes factor t-tests (independent, paired, one-sample), Bayesian correlation, Bayesian ANOVA (BIC) |
+| Charts | Heatmap, volcano, radar, Kaplan–Meier, forest |
+| Sample size | **G*Power-style a priori / post hoc / sensitivity**, t-tests, proportions, ANOVA, correlation, log-rank (Schoenfeld), diagnostic sensitivity (Buderer), Mead's resource equation for animal studies |
+
+## New in v1.5
+
+- **SPSS and GraphPad Prism files:** open and save `.sav` (value labels and variable labels are kept) and `.pzfx` (Column, Grouped, XY and summary-data tables; one Prism Column table per outcome on export).
+- **SPSS-style tables** (Settings → Table style) next to APA tables, and a **Word validation report** (Help → Validation) with 53 checks against R, metafor, BayesFactor and G*Power plus a formula-equivalence table for SPSS and Prism.
+- **Bayesian statistics:** JZS Bayes factors for t-tests (independent, paired, one-sample) with a prior-robustness plot, Bayesian correlation and BIC-based Bayesian ANOVA (validated against the R package BayesFactor).
+- **G*Power-style power analysis:** a priori, post hoc and sensitivity for t, F (ANOVA, regression), χ², correlation and two proportions, with the H0/H1 distribution plot and the power curve.
+- **Chart library:** heatmap (z-scored group means or correlation, clustered), volcano plot (fold change vs FDR), radar chart, Kaplan–Meier and custom forest plot.
+- **Automatic assumption checks:** when normality fails after a t-test, ANOVA or Pearson correlation, the matching non-parametric test (Mann–Whitney, Wilcoxon, Kruskal–Wallis + Dunn, Spearman) is added with an explanation in English and Arabic (can be turned off in Settings).
+- **R bridge:** Tools → *Verify last analysis in R* re-runs it in R (t-tests, ANOVA, non-parametric tests, correlation, regression, `lmerTest` mixed models, `geepack` GEE) and *R console* runs any R code on the current data. Requires R to be installed.
+- **Image integrity:** *Open in Photopea* (panels and text only, with a warning) and *Check image returned from Photopea*, which finds the image inside the figure and separates added labels from local changes of the tissue; a **duplicate / re-used image detector** (rotated, mirrored, cropped or rescaled copies across images and copy-move cloning inside one image).
+- **Analysis assistant (Ctrl+K):** type a request in Arabic or English ("قارن MDA بين المجموعات", "correlation between ALT and AST", "heatmap") and it runs the analysis, the figure and the text. It works offline.
+- **Teach the AI reader on your slides:** label nuclei on your own images (for example rat liver or kidney); the nucleus-type network is fine-tuned from its built-in weights and only activated when grouped cross-validation shows it is at least as good. Labels stay on the computer.
+- **In-app update:** checks GitHub releases at startup (optional) or from Help → Check for updates, downloads the installer and restarts.
 
 ## New in v1.4: AI image reader
 
@@ -85,7 +101,7 @@ Validation (`tests/test_imaging.py`, real public H&E and IHC images): all 9 legi
 
 ## Validation
 
-`tests/test_validation.py` compares the engine with published reference outputs: R (`t.test`, `aov`, `TukeyHSD`, `kruskal.test`, `fisher.test`, `cor.test`, `lm`, `glm`, `survdiff`, `coxph`, `power.t.test`, `power.prop.test`), metafor (`rma` REML/DL on the BCG data), Shrout & Fleiss (1979) for ICC, and Dobson's beetle data for probit/logit. **45/45 checks pass.** A smoke test also runs every analysis end to end. Inside the app, open *Help → Validation report*.
+`tests/test_validation.py` compares the engine with published reference outputs: R (`t.test`, `aov`, `TukeyHSD`, `kruskal.test`, `fisher.test`, `cor.test`, `lm`, `glm`, `survdiff`, `coxph`, `power.t.test`, `power.prop.test`), metafor (`rma` REML/DL on the BCG data), Shrout & Fleiss (1979) for ICC, and Dobson's beetle data for probit/logit. Since v1.5 it also checks the JZS Bayes factors (R BayesFactor) and sample sizes from G*Power 3.1. **53/53 checks pass.** A smoke test also runs every analysis end to end. Inside the app, open *Help → Validation report*.
 
 ```
 python -m pytest tests -q

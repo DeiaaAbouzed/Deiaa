@@ -62,5 +62,6 @@ def output_css(theme="light"):
         return HTML_CSS + """
 body{color:#E6EAF2;background:#1A202B;} h2{color:#7DB8FF;} h3{color:#A9C8F0;} .subtitle,.note,.tnote,.caption{color:#9AA7BA;}
 table.apa th{background:#232C3A;border-color:#ccc;} table.apa caption{color:#A9C8F0;} table.apa tr:last-child td{border-color:#ccc;}
+table.spss th{background:#24344D;color:#E6EAF2;} table.spss td{border-color:#3A4658;} table.spss td:first-child{background:#1F2735;}
 .interpret{background:#1D2C42;} .methods{background:#1C2E22;} .warning{background:#3A2E1A;}"""
     return HTML_CSS

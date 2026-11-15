@@ -22,6 +22,11 @@ table.apa th{border-top:2px solid #222;border-bottom:1px solid #222;padding:5px 
 table.apa td{padding:4px 9px;text-align:center;}
 table.apa td.rowhead{text-align:left;font-weight:600;}
 table.apa tr:last-child td{border-bottom:2px solid #222;}
+table.spss{border-collapse:collapse;margin:8px 0 4px 0;font-size:12px;min-width:320px;border:1px solid #9AA5B1;}
+table.spss caption{caption-side:top;text-align:center;font-weight:700;padding:4px 0;color:#000;}
+table.spss th{border:1px solid #9AA5B1;padding:4px 8px;text-align:center;background:#DCE6F1;color:#000;font-weight:600;}
+table.spss td{border:1px solid #C3CBD4;padding:3px 8px;text-align:right;}
+table.spss td:first-child{text-align:left;background:#F2F5F9;font-weight:600;}
 .tnote{font-size:11.5px;color:#4a5568;margin:2px 0 10px 0;}
 .note{font-size:12px;color:#4a5568;}
 .warning{background:#fff4e5;border-left:4px solid #e08e0b;padding:6px 10px;font-size:12.5px;}
@@ -52,6 +57,13 @@ def _set_cell_border(cell, **kwargs):
         for k, v in val.items():
             el.set(qn(f"w:{k}"), str(v))
         borders.append(el)
+
+
+def _shade(cell, hex_fill):
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    sh = OxmlElement("w:shd"); sh.set(qn("w:val"), "clear"); sh.set(qn("w:color"), "auto"); sh.set(qn("w:fill"), hex_fill)
+    cell._tc.get_or_add_tcPr().append(sh)
 
 
 def results_to_docx(results: list[Result], path: str, include_methods=True):
@@ -111,17 +123,28 @@ def results_to_docx(results: list[Result], path: str, include_methods=True):
                 cap.add_run(f"Table {tcount}").bold = True
                 doc.add_paragraph().add_run(b.caption or "").italic = True
                 t = doc.add_table(rows=len(df) + 1, cols=len(df.columns))
+                from ..core.result import _spss
+                spss = _spss()
+                grid = {"val": "single", "sz": 4, "color": "9AA5B1"}
                 for j, c in enumerate(df.columns):
                     cell = t.cell(0, j)
                     cell.text = str(c)
                     cell.paragraphs[0].runs[0].bold = True
-                    _set_cell_border(cell, top=thick, bottom=thin, left=none, right=none)
+                    if spss:
+                        _set_cell_border(cell, top=grid, bottom=grid, left=grid, right=grid); _shade(cell, "DCE6F1")
+                    else:
+                        _set_cell_border(cell, top=thick, bottom=thin, left=none, right=none)
                 for i in range(len(df)):
                     for j in range(len(df.columns)):
                         cell = t.cell(i + 1, j)
                         cell.text = str(df.iat[i, j])
-                        _set_cell_border(cell, top=none, left=none, right=none,
-                                         bottom=thick if i == len(df) - 1 else none)
+                        if spss:
+                            _set_cell_border(cell, top=grid, bottom=grid, left=grid, right=grid)
+                            if j == 0:
+                                _shade(cell, "F2F5F9")
+                        else:
+                            _set_cell_border(cell, top=none, left=none, right=none,
+                                             bottom=thick if i == len(df) - 1 else none)
                 for row in t.rows:
                     for j, cell in enumerate(row.cells):
                         for par in cell.paragraphs:

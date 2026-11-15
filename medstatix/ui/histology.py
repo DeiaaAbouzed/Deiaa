@@ -573,6 +573,9 @@ class HistologyStudio(QWidget):
         row.addWidget(acc); row.addWidget(rej); f.addRow(row)
         rp = QPushButton(T("Add the reading to the results / Word", "إضافة القراءة إلى النتائج / Word")); rp.clicked.connect(self.ai_report)
         f.addRow(rp)
+        tb = QPushButton("🎓 " + T("Teach the AI on my slides…", "علّم القارئ على شرائحي…")); tb.clicked.connect(self.ai_teach)
+        tb.setToolTip(T("Label nuclei on your own tissue and fine-tune the cell-type classifier", "سمِّ الأنوية على نسيجك ودرّب مصنِّف أنواع الخلايا"))
+        f.addRow(tb)
         il.addWidget(g)
         g = QGroupBox(T("5 · Export", "٥ · التصدير")); f = QFormLayout(g)
         self.annot_on = QComboBox()
@@ -588,6 +591,9 @@ class HistologyStudio(QWidget):
                         (T("Save edit log + Methods text…", "حفظ سجل التعديلات ونص الطرق…"), self.save_log),
                         (T("Send report to Results / Word", "إرسال التقرير إلى النتائج / Word"), self.send_report),
                         (T("Figure panel composer (A, B, C…)", "تركيب لوحة صور (A وB وC…)"), self.composer),
+                        ("🖌 " + T("Open in Photopea (panels and text only)…", "فتح في Photopea (لوحات ونصوص فقط)…"), self.photopea_open),
+                        ("🔎 " + T("Check image returned from Photopea…", "فحص الصورة العائدة من Photopea…"), self.photopea_check),
+                        ("🧬 " + T("Duplicate / re-used image detector…", "كاشف الصور المكررة والمعاد استخدامها…"), self.duplicates),
                         ("📂 " + T("Batch: a whole folder → statistics…", "معالجة مجلد كامل ← الإحصاء…"), self.batch)]:
             bt = QPushButton(txt); bt.clicked.connect(fn); f.addRow(bt)
         il.addWidget(g)
@@ -1087,6 +1093,18 @@ class HistologyStudio(QWidget):
         self.last_quant_type = "AI image reader"
         self.render_report()
 
+    def ai_teach(self):
+        from .teach_ui import TeachDialog
+        if self.original is None:
+            return
+        r = getattr(self, "ai", None)
+        if r is None or r.get("X") is None:
+            self.ai_read(); r = getattr(self, "ai", None)
+            if r is None:
+                return
+        img = IC.measurement_image(self.original, self.steps_done) if self.steps_done else self.original
+        TeachDialog(self, img, r, self.name, np_to_qimage).exec()
+
     def ai_accept(self):
         """Keep the reviewed suggestions as ordinary annotations, add one label per finding, and recount."""
         from ..imaging import reader as RD
@@ -1344,6 +1362,69 @@ class HistologyStudio(QWidget):
             rows = dlg.numeric_rows()
             if rows is not None and len(rows):
                 self.send_rows.emit(rows)
+
+    def _photopea_source(self):
+        return self.base if self.annot_on.currentData() == "original" else self.processed
+
+    def photopea_open(self):
+        if self.processed is None:
+            return
+        from PySide6.QtCore import QStandardPaths, QUrl
+        from PySide6.QtGui import QDesktopServices
+        from .forensics_ui import PHOTOPEA_WARNING_EN, PHOTOPEA_WARNING_AR
+        arr = self._photopea_source()
+        d = os.path.join(QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation) or os.path.expanduser("~"),
+                         "MedStatix", "Photopea")
+        os.makedirs(d, exist_ok=True)
+        path = os.path.join(d, os.path.splitext(self.name)[0] + "_for_photopea.png")
+        IC.save_image(arr, path, 300)
+        self._pp_sent = arr.copy()
+        QApplication.clipboard().setImage(np_to_qimage(arr))
+        QMessageBox.warning(self, "Photopea", T(PHOTOPEA_WARNING_EN, PHOTOPEA_WARNING_AR).format(path=path))
+        QDesktopServices.openUrl(QUrl("https://www.photopea.com"))
+
+    def photopea_check(self):
+        if self.processed is None:
+            return
+        from ..imaging import forensics as FO
+        sent = getattr(self, "_pp_sent", None)
+        if sent is None:
+            sent = self._photopea_source()
+        path, _ = QFileDialog.getOpenFileName(self, T("Figure exported from Photopea", "اللوحة المصدَّرة من Photopea"), "",
+                                              "Images (*.png *.tif *.tiff *.jpg *.jpeg *.bmp)")
+        if not path:
+            return
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            r = FO.external_edit_check(sent, IC.load_image(path))
+        except Exception as e:
+            QApplication.restoreOverrideCursor(); QMessageBox.critical(self, "", str(e)); return
+        QApplication.restoreOverrideCursor()
+        verdict = T(r["verdict"], r["verdict_ar"])
+        if not r["found"]:
+            QMessageBox.warning(self, "Photopea", verdict); return
+        res = Result("Photopea round-trip integrity check", os.path.basename(path))
+        res.table(pd.DataFrame([
+            {"Metric": "Image located in figure (normalised cross-correlation)", "Value": r["match"]},
+            {"Metric": "Panel position (x, y, width, height px)", "Value": f"{r['box'][1]}, {r['box'][0]}, {r['box'][3]}, {r['box'][2]}"},
+            {"Metric": "Added marks (labels, arrows, lines)", "Value": r["marks"]},
+            {"Metric": "Local tissue changes (regions)", "Value": r["tissue_regions"]},
+            {"Metric": "Area changed in tissue (%)", "Value": r["tissue_pct"]},
+            {"Metric": "Verdict", "Value": r["verdict"]}]), "Comparison of the returned figure with the image sent to Photopea")
+        from matplotlib.figure import Figure
+        fig = Figure(figsize=(9, 4.5)); a1, a2 = fig.subplots(1, 2)
+        a1.imshow(r["panel"]); a1.set_title("Returned panel"); a1.axis("off")
+        a2.imshow(FO.overlay_flags(r["panel"], r["tissue_flag"]) if r["tissue_regions"] else FO.overlay_flags(r["panel"], r["flag"], (0, 160, 255)))
+        a2.set_title("Tissue changes (red)" if r["tissue_regions"] else "Added marks (blue)"); a2.axis("off")
+        fig.tight_layout()
+        res.figure(fig, "Flagged areas in the returned panel.")
+        res.interpret(r["verdict"], r["verdict_ar"])
+        self.send_result.emit(res)
+        (QMessageBox.information if not r["tissue_regions"] else QMessageBox.warning)(self, "Photopea", verdict)
+
+    def duplicates(self):
+        from .forensics_ui import DuplicateDialog
+        DuplicateDialog(self, self.send_result.emit).exec()
 
     def composer(self):
         PanelComposer(self, lambda: self.render_annotated(self.c_overlay.isChecked())).exec()

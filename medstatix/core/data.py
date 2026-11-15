@@ -8,8 +8,8 @@ import pandas as pd
 
 from .result import AnalysisError
 
-IMPORT_FILTER = ("All supported (*.xlsx *.xls *.csv *.txt *.tsv *.sav *.dta *.sas7bdat *.msx);;MedStatix project (*.msx);;"
-                 "Excel (*.xlsx *.xls);;CSV (*.csv *.txt *.tsv);;SPSS (*.sav);;Stata (*.dta);;SAS (*.sas7bdat)")
+IMPORT_FILTER = ("All supported (*.xlsx *.xls *.csv *.txt *.tsv *.sav *.pzfx *.dta *.sas7bdat *.msx);;MedStatix project (*.msx);;"
+                 "Excel (*.xlsx *.xls);;CSV (*.csv *.txt *.tsv);;SPSS (*.sav);;GraphPad Prism (*.pzfx);;Stata (*.dta);;SAS (*.sas7bdat)")
 
 
 def load_file(path: str, sheet=0) -> tuple[pd.DataFrame, dict]:
@@ -24,9 +24,16 @@ def load_file(path: str, sheet=0) -> tuple[pd.DataFrame, dict]:
         import pyreadstat
         df, meta = pyreadstat.read_sav(path, apply_value_formats=False)
         labels = dict(meta.variable_value_labels or {})
+        cl = list(meta.column_labels or [])
+        if len(cl) == df.shape[1] and all(cl) and len(set(cl)) == len(cl) and all(len(str(x)) <= 60 for x in cl):
+            ren = dict(zip(df.columns, cl)); df = df.rename(columns=ren)
+            labels = {ren.get(k, k): v for k, v in labels.items()}
         for col, mapping in labels.items():
             if col in df.columns:
                 df[col] = df[col].map(lambda v, m=mapping: m.get(v, v))
+    elif ext == ".pzfx":
+        from .pzfx import read_pzfx
+        df, _ = read_pzfx(path, sheet if isinstance(sheet, (int, str)) else 0)
     elif ext == ".dta":
         df = pd.read_stata(path)
     elif ext == ".sas7bdat":
@@ -38,13 +45,40 @@ def load_file(path: str, sheet=0) -> tuple[pd.DataFrame, dict]:
     return df.reset_index(drop=True), labels
 
 
+def _spss_name(c, i):
+    """Valid SPSS variable name (letters/digits/_ . @ #, starts with a letter, ≤ 64 bytes); the original name is kept as label."""
+    import re
+    n = re.sub(r"[^0-9A-Za-z_.@#]", "_", str(c)).strip("_.") or f"V{i + 1}"
+    if not n[0].isalpha():
+        n = "V" + n
+    return n[:60]
+
+
 def save_file(df: pd.DataFrame, path: str):
     ext = os.path.splitext(path)[1].lower()
     if ext in (".xlsx",):
         df.to_excel(path, index=False)
     elif ext == ".sav":
         import pyreadstat
-        pyreadstat.write_sav(df, path)
+        # categorical text columns are stored as numeric codes with SPSS value labels (as SPSS users expect)
+        out = df.copy(); labels = {}
+        for c in out.columns:
+            if not pd.api.types.is_numeric_dtype(out[c]):
+                cats = list(out[c].cat.categories) if hasattr(out[c], "cat") else list(dict.fromkeys(out[c].dropna()))
+                if 0 < len(cats) <= 50:
+                    codes = {v: i + 1 for i, v in enumerate(cats)}
+                    out[c] = out[c].map(codes).astype(float)
+                    labels[c] = {float(i): str(v) for v, i in codes.items()}
+                else:
+                    out[c] = out[c].astype(str)
+        names = {c: _spss_name(c, i) for i, c in enumerate(out.columns)}
+        out = out.rename(columns=names)
+        pyreadstat.write_sav(out, path, column_labels=[str(c) for c in df.columns],
+                             variable_value_labels={names[c]: v for c, v in labels.items()})
+    elif ext == ".pzfx":
+        from .pzfx import write_pzfx
+        cat = next((c for c in df.columns if not pd.api.types.is_numeric_dtype(df[c]) and 1 < df[c].nunique() <= 20), None)
+        write_pzfx(df, path, group=cat)
     elif ext == ".dta":
         df.to_stata(path, write_index=False)
     else:

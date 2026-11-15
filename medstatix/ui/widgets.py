@@ -352,6 +352,19 @@ class SettingsDialog(QDialog):
         self.theme.setCurrentIndex(0 if SETTINGS.theme == "light" else 1)
         f2.addRow(tr("ui_lang"), self.lang); f2.addRow(tr("theme"), self.theme)
         lay.addWidget(g2)
+        ar = SETTINGS.language == "ar"
+        g3 = QGroupBox("المخرجات والاختبارات" if ar else "Output & tests"); f3 = QFormLayout(g3)
+        self.tstyle = QComboBox(); self.tstyle.addItem("APA (للمجلات)" if ar else "APA (journal)", "APA")
+        self.tstyle.addItem("SPSS (جداول بنمط SPSS)" if ar else "SPSS-style tables", "SPSS")
+        self.tstyle.setCurrentIndex(1 if SETTINGS.table_style == "SPSS" else 0)
+        self.fallback = QCheckBox("عند فشل الافتراضات أضف الاختبار اللامعلمي تلقائياً مع الشرح" if ar else
+                                  "When assumptions fail, add the non-parametric test automatically, with an explanation")
+        self.fallback.setChecked(SETTINGS.auto_fallback)
+        self.upd = QCheckBox("ابحث عن تحديثات عند بدء التشغيل" if ar else "Check for updates at startup")
+        self.upd.setChecked(SETTINGS.check_updates)
+        f3.addRow("نمط الجداول" if ar else "Table style", self.tstyle)
+        f3.addRow("", self.fallback); f3.addRow("", self.upd)
+        lay.addWidget(g3)
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         bb.accepted.connect(self.accept); bb.rejected.connect(self.reject)
         lay.addWidget(bb)
@@ -367,6 +380,8 @@ class SettingsDialog(QDialog):
         SETTINGS.fig_width_mm = self.w.value(); SETTINGS.fig_height_mm = self.h.value()
         SETTINGS.export_dpi = int(self.dpi.currentText()); SETTINGS.show_significance = self.sig.isChecked()
         SETTINGS.language = self.lang.currentData(); SETTINGS.theme = self.theme.currentData()
+        SETTINGS.table_style = self.tstyle.currentData(); SETTINGS.auto_fallback = self.fallback.isChecked()
+        SETTINGS.check_updates = self.upd.isChecked()
 
 
 # --------------------------------------------------------------------------- simple form dialog

@@ -44,10 +44,10 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: medstatix-v1.4.0
-          name: MedStatix Pro 1.4.0 (Windows)
+          tag_name: medstatix-v1.5.0
+          name: MedStatix Pro 1.5.0 (Windows)
           target_commitish: ${{ github.sha }}
-          body: "MedStatix Pro 1.4.0 – AI image reader for histology and IHC: a deep-learning nucleus detector (StarDist versatile H&E, run offline with ONNX Runtime) and a nucleus-type network trained on CoNSeP (inflammatory F1 0.77 on held-out images) suggest inflammatory cells, inflammatory infiltrate foci, congestion and DAB-positive nuclei (per-cell H-score with thresholds set from the negative nuclei), each with a confidence; the user deletes wrong suggestions and accepts the rest, which adds labels and arrows automatically and sends the counts to statistics; a plain-language reading (English/Arabic) and a Methods paragraph with references go to the results/Word. Low-magnification images are enlarged for the network automatically. New Maximum enhancement level. Windows installer (MedStatixPro-Setup-1.4.0.exe) and portable ZIP."
+          body: "MedStatix Pro 1.5.0 – Opens and saves SPSS (.sav, with value and variable labels) and GraphPad Prism (.pzfx) files; SPSS-style output tables (Settings); a Word validation report against R, SPSS-equivalent formulas, metafor, BayesFactor and G*Power (53 checks); Bayesian t-test, correlation and ANOVA (JZS Bayes factors); G*Power-style a priori, post hoc and sensitivity power analysis with the distribution plot; chart library (heatmap, volcano, radar, Kaplan–Meier, forest); automatic assumption checks that add the non-parametric test with an explanation; R bridge (verify the last analysis in R, R console); Photopea round trip with a check that only labels were added; duplicate / re-used image and copy-move detector; offline Arabic/English analysis assistant; teach the AI reader on your own slides (label nuclei, fine-tune with grouped cross-validation); in-app update. Windows installer (MedStatixPro-Setup-1.5.0.exe) and portable ZIP."
           files: |
             dist/installer/*.exe
             dist/MedStatixPro-portable-win64.zip

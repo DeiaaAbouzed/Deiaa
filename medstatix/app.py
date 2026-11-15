@@ -37,6 +37,17 @@ def selftest() -> int:
         ok &= n > 150
     else:
         lines.append("AI reader: onnxruntime missing"); ok = False
+    from .analyses.bayes import jzs_bf_t
+    from .analyses.gpower import solve_n, FAMILIES
+    bf = jzs_bf_t(-4.0621, 10, 9); n = solve_n(FAMILIES[0], .5, .05, .8, 2, 1, 2)[0]
+    lines.append(f"Bayes factor (sleep, paired) = {bf:.4f}; G*Power N (d = 0.5) = {n}")
+    ok &= abs(bf - 17.2589) < 0.01 and n == 128
+    from .imaging import forensics as FO
+    a = IC.load_image(os.path.join(here, "HE_breast_carcinoma_1.png"))
+    ok &= FO.clone_check(a) is None and FO.external_edit_check(a, a)["clean"]
+    from .core import pzfx, assistant, updater, rbridge, fallback  # noqa: F401
+    import pyreadstat  # noqa: F401
+    lines.append("forensics, Prism/SPSS I/O, assistant, updater, R bridge: loaded")
     lines.append("OK" if ok else "FAIL")
     print("\n".join(lines))
     return 0 if ok else 1
@@ -57,6 +68,7 @@ def main():
     from .ui.main_window import MainWindow
     w = MainWindow()
     w.show()
+    w.startup_update_check()
     if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
         w.open_file(sys.argv[1])
     sys.exit(app.exec())

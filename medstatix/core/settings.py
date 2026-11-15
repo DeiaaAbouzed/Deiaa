@@ -19,6 +19,10 @@ class Settings:
     alpha: float = 0.05
     decimals: int = 3
     journal: str = ""               # target journal preset ("" = none), see report/journals.py
+    table_style: str = "APA"        # APA | SPSS
+    auto_fallback: bool = True      # add the non-parametric alternative when assumptions fail
+    ai_user_model: bool = True      # use the nucleus classifier fine-tuned on the user's own slides when present
+    check_updates: bool = True      # check GitHub releases at startup
     interp_lang: str = "same"       # Word export interpretation language: same | en | ar | both
 
     def as_dict(self):
