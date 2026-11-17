@@ -15,6 +15,7 @@ S = {
     "tab_data": ("Data", "البيانات"), "tab_vars": ("Variables", "المتغيرات"), "tab_output": ("Results", "النتائج"),
     "tab_figs": ("Figures studio", "استوديو الرسوم"),
     "tab_histo": ("Histology & IHC", "الهستوباثولوجي و IHC"),
+    "tab_images": ("Research images", "تحسين صور البحث"),
     "search": ("Search analyses…", "ابحث عن تحليل…"),
     "run": ("Run", "تشغيل"), "cancel": ("Cancel", "إلغاء"), "ok": ("OK", "موافق"),
     "rows_cols": ("{r} rows × {c} variables", "{r} صف × {c} متغير"),

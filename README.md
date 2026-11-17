@@ -39,6 +39,9 @@ MedStatix Pro brings together what researchers usually spread across SPSS, Graph
 | Charts | Heatmap, volcano, radar, Kaplan–Meier, forest |
 | Sample size | **G*Power-style a priori / post hoc / sensitivity**, t-tests, proportions, ANOVA, correlation, log-rank (Schoenfeld), diagnostic sensitivity (Buderer), Mead's resource equation for animal studies |
 
+## New in v1.9: Research images studio
+A tab for every figure that is not a histology slide: photographs, Western blots/gels, graphs and screenshots, scans and fluorescence images (`imaging/general.py`, `ui/figure_studio.py`). Type detection, one-click recipes (blots: linear only, no clipping), global adjustments, straightening, border removal, print sizing by column width and dpi with a readiness report, faithful enlargement (Lanczos + unsharp + iterative back-projection, ≤ ×4) with the real dpi written to the file, RGB/greyscale/CMYK export, folder processing with edit logs and methods text.
+
 ## New in v1.8
 - **One-click Results section** written from the Journal summary table (English and Arabic): model vs control with fold or % change, each treatment's % recovery and normalisation, dose comparison and an overall synthesis; also in Word and the manuscript draft.
 - **Congestion learned from a brush**: paint red cells and look-alike tissue on ~10 images; a colour + multi-scale texture pixel classifier (NumPy MLP) is validated leave-one-image-out and used only when it beats the colour rule (`imaging/rbc_learn.py`, `ui/congestion_ui.py`).

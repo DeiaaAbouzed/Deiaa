@@ -98,6 +98,9 @@ class MainWindow(QMainWindow):
         self.histo.send_result.connect(self._histo_result)
         self.histo.send_rows.connect(self._histo_rows)
         self.tabs.addTab(self.histo, "🔬  " + tr("tab_histo"))
+        from .figure_studio import FigureStudio
+        self.figstudio = FigureStudio(self)
+        self.tabs.addTab(self.figstudio, "🖼  " + tr("tab_images"))
         wrap = QWidget(); wl = QVBoxLayout(wrap); wl.setContentsMargins(8, 8, 8, 8); wl.addWidget(self.tabs)
         splitter.addWidget(wrap)
         splitter.setStretchFactor(1, 1)
