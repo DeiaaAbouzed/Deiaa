@@ -111,6 +111,14 @@ class FigureStudio(QWidget):
         f.addRow(T("Enlarging", "التكبير"), self.up)
         self.allow_up = QCheckBox(T("Enlarge when the image has fewer pixels than needed", "كبّر الصورة إذا كانت بكسلاتها أقل من المطلوب"))
         self.allow_up.setChecked(True); self.allow_up.toggled.connect(self._plan); f.addRow(self.allow_up)
+        self.tag_only = QCheckBox(T("Only write the dpi value (keep the pixels; the print size follows from them)",
+                                    "اكتب قيمة الـ dpi فقط (تبقى البكسلات كما هي ويتحدد مقاس الطباعة منها)"))
+        self.tag_only.toggled.connect(self._plan); f.addRow(self.tag_only)
+        self.expert = QCheckBox("🔓 " + T("Expert mode: all tools on every image type, enlargement up to ×8 (every edit is still "
+                                          "logged and disclosed)", "وضع الخبير: كل الأدوات على كل الأنواع وتكبير حتى ×8 (كل تعديل "
+                                          "يظل مسجلًا ومذكورًا في الطرق)"))
+        self.expert.setChecked(getattr(SETTINGS, "expert_mode", False))
+        self.expert.toggled.connect(self._expert); f.addRow(self.expert)
         self.plan_lbl = QLabel(""); self.plan_lbl.setWordWrap(True); self.plan_lbl.setTextFormat(Qt.RichText); f.addRow(self.plan_lbl)
         pl.addWidget(g)
         g = QGroupBox(T("4 · Save", "٤ · الحفظ")); f = QFormLayout(g)
@@ -209,7 +217,7 @@ class FigureStudio(QWidget):
         try:
             small = _small(img)
             kind = self.kind_of(img)
-            out, done = GN.apply(small, self.steps_for(small, kind), kind)
+            out, done = GN.apply(small, self.steps_for(small, kind), kind, self.expert.isChecked())
             self.preview_in, self.preview_out, self.cur_kind = small, out, kind
             self.log = GN.FigureLog(source=os.path.basename(self.cur), kind=kind, steps=done)
         finally:
@@ -256,19 +264,31 @@ class FigureStudio(QWidget):
             i = self.dpi.findData(GN.DPI_FOR[self.cur_kind])
             self.dpi.blockSignals(True); self.dpi.setCurrentIndex(max(i, 0)); self.dpi.blockSignals(False)
         p = GN.print_plan(shape, self.width_mm(), self.dpi_value(self.cur_kind))
+        cap = 8 if self.expert.isChecked() else 4
+        if self.tag_only.isChecked():
+            w = p["have_px"][0] / p["dpi"] * 25.4
+            self.plan_lbl.setText(T(f"The file will say {p['dpi']} dpi; with {p['have_px'][0]} px it prints <b>{w:.0f} mm</b> wide.",
+                                    f"سيُكتب في الملف {p['dpi']} dpi؛ وبعدد {p['have_px'][0]} بكسل يُطبع بعرض <b>{w:.0f} مم</b>."))
+            return
+        if p["verdict"] == "low" and p["factor"] <= cap:
+            p["verdict"] = "upscale"
         col = {"ok": "#1B7F3B", "upscale": "#B26A00", "low": "#C8364B"}[p["verdict"]]
         msg = {"ok": T("Enough pixels: the image will be saved at this size without enlarging.",
                        "البكسلات كافية: ستُحفظ الصورة بهذا المقاس دون تكبير."),
                "upscale": T(f"Needs enlarging ×{p['factor']}. This is acceptable for print, but no new detail is created.",
                             f"تحتاج تكبيرًا ×{p['factor']}، وهذا مقبول للطباعة لكنه لا يضيف تفاصيل جديدة."),
                "low": T(f"Needs ×{p['factor']}: the original is small for this size. Use a narrower width or the original "
-                        f"file/camera image if you have it; enlargement is limited to ×4.",
+                        f"file/camera image if you have it; enlargement is limited to ×{cap}.",
                         f"تحتاج ×{p['factor']}: الأصل صغير على هذا المقاس. استخدم عرضًا أصغر أو الملف الأصلي من الكاميرا إن وُجد؛ "
-                        f"أقصى تكبير ×4.")}[p["verdict"]]
+                        f"أقصى تكبير ×{cap}.")}[p["verdict"]]
         self.plan_lbl.setText(
             f"{T('Now', 'الآن')}: {p['have_px'][0]} × {p['have_px'][1]} px = <b>{p['effective_dpi']} dpi</b> "
             f"{T('at', 'عند')} {p['width_mm']:.0f} mm · {T('needed', 'المطلوب')}: {p['need_px'][0]} × {p['need_px'][1]} px "
             f"({p['dpi']} dpi, {p['width_mm']:.0f} × {p['height_mm']} mm)<br><span style='color:{col}'><b>{msg}</b></span>")
+
+    def _expert(self, on):
+        SETTINGS.expert_mode = bool(on)
+        self._changed()
 
     # ------------------------------------------------------------------ export
     def render_full(self, path):
@@ -276,7 +296,8 @@ class FigureStudio(QWidget):
         kind = self.kind_of(img)
         dpi = self.dpi_value(kind)
         out, log, plan = GN.process(img, kind, self.steps_for(img, kind), self.width_mm(), dpi,
-                                    self.up.currentData(), self.allow_up.isChecked())
+                                    self.up.currentData(), self.allow_up.isChecked(), expert=self.expert.isChecked(),
+                                    tag_only=self.tag_only.isChecked())
         log.source = os.path.basename(path)
         return out, log, log.output.get("dpi", dpi)
 

@@ -299,7 +299,7 @@ def read_image(img, px_um=0.0, stain="auto", min_conf=0.65, min_focus=8, focus_u
             "methods": METHOD_TEXT.format(min_focus=min_focus, eps_um=int(focus_um)) + (GATE_TEXT if profile != "general" and stain == "H&E" else "")
             + (CALIB_TEXT.format(px=px_um) if calib == "scale bar" else "")
             + ((" " + RL.methods_text()) if (stain == "H&E" and RL.active()) else ""),
-            "px_um": px_um, "calibration": calib, "marks": mk, "glomeruli": glom, "profile": profile}
+            "px_um": px_um, "width_px": W, "calibration": calib, "marks": mk, "glomeruli": glom, "profile": profile}
 
 
 def describe(r, ar=False):

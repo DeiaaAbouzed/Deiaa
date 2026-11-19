@@ -39,6 +39,10 @@ MedStatix Pro brings together what researchers usually spread across SPSS, Graph
 | Charts | Heatmap, volcano, radar, Kaplan–Meier, forest |
 | Sample size | **G*Power-style a priori / post hoc / sensitivity**, t-tests, proportions, ANOVA, correlation, log-rank (Schoenfeld), diagnostic sensitivity (Buderer), Mead's resource equation for animal studies |
 
+## New in v2.0
+- **Expert mode** (Settings or the Research images tab): wider histology/IHC adjustment ranges, every tool on blots/gels, enlargement to ×8, write-dpi-only export. All edits stay logged and disclosed.
+- **Professional histopathology comments** (`report/histo_comment.py`): pathologist-style description with 0–3 grades on stated criteria, figure legend (EN/AR), and a batch `histopathology_report.txt` with group statistics.
+
 ## New in v1.9: Research images studio
 A tab for every figure that is not a histology slide: photographs, Western blots/gels, graphs and screenshots, scans and fluorescence images (`imaging/general.py`, `ui/figure_studio.py`). Type detection, one-click recipes (blots: linear only, no clipping), global adjustments, straightening, border removal, print sizing by column width and dpi with a readiness report, faithful enlargement (Lanczos + unsharp + iterative back-projection, ≤ ×4) with the real dpi written to the file, RGB/greyscale/CMYK export, folder processing with edit logs and methods text.
 

@@ -80,7 +80,15 @@ def process_one(path, stain, source, level, kind, px, out_dir, fmt, dpi, save_ba
         with open(os.path.join(out_dir, f"{name}_edit_log.json"), "w", encoding="utf-8") as f:
             d = json.loads(log.to_json()); d["integrity"] = rep; d["methods_text"] = log.methods_text()
             json.dump(d, f, indent=2, ensure_ascii=False, default=str)
-    q = IC.quantify(IC.measurement_image(img, steps), kind, px) if kind and not kind.startswith("None") else {}
+    if kind and kind.startswith("AI reader"):
+        from ..imaging import reader as RD
+        from ..report import histo_comment as HC
+        r = RD.read_image(IC.measurement_image(img, steps), px, profile="rodent")
+        q = HC.per_image_row(r)
+        q["comment"] = HC.image_comment(r)
+        q["comment_ar"] = HC.image_comment(r, ar=True)
+    else:
+        q = IC.quantify(IC.measurement_image(img, steps), kind, px) if kind and not kind.startswith("None") else {}
     qs = "IHC" if info["stain"] == "IHC-DAB" else "H&E"
     return {"quality_before": IC.image_qc(base, qs)["score"], "quality_after": IC.image_qc(out, qs)["score"],
             "integrity": "passed" if rep.get("passed") else "CHECK", "um_per_px": round(px, 4) if px else None,
@@ -214,10 +222,26 @@ class BatchDialog(QDialog):
                 f.write(f" All images were colour-matched to the same reference image ({self.reference['image']}) with one "
                         "global Reinhard transform per image so that the groups are shown with identical stain appearance; "
                         "quantification used the native colours.")
+        if "comment" in self.rows.columns:
+            self._histo_report(out_dir)
         self.show_table(self.rows)
         self.run_b.setEnabled(True); self.send_b.setEnabled(True)
         QMessageBox.information(self, "", T("Saved processed images, edit logs and batch_results.csv in:",
                                             "تم حفظ الصور المحسنة وسجلات التعديل وملف النتائج في:") + f"\n{out_dir}")
+
+    def _histo_report(self, out_dir):
+        """Per-image professional comments, the group comparison and the grading criteria, in English and Arabic."""
+        from ..report import histo_comment as HC
+        df = self.rows
+        ok = df[df["comment"].notna()] if "comment" in df else df
+        lines = ["HISTOPATHOLOGY — automated draft (confirm every statement before use)", "", "Grading criteria", HC.GRADING_TEXT, "",
+                 "Results (groups)", HC.group_results(ok), "", "Per image"]
+        lines += [f"{r['image']} [{r['group']}]: {r['comment']}" for _, r in ok.iterrows()]
+        lines += ["", "", "التقرير الهستوباثولوجي (مسودة آلية: راجع كل عبارة قبل الاعتماد)", "", "النتائج (المجموعات)",
+                  HC.group_results(ok, ar=True), "", "لكل صورة"]
+        lines += [f"{r['image']} [{r['group']}]: {r['comment_ar']}" for _, r in ok.iterrows()]
+        with open(os.path.join(out_dir, "histopathology_report.txt"), "w", encoding="utf-8") as fh:
+            fh.write("\n".join(lines))
 
     def _run_one(self, p, out_dir):
         import concurrent.futures, time

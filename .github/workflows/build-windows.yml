@@ -44,10 +44,10 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: medstatix-v1.9.0
-          name: MedStatix Pro 1.9.0 (Windows)
+          tag_name: medstatix-v2.0.0
+          name: MedStatix Pro 2.0.0 (Windows)
           target_commitish: ${{ github.sha }}
-          body: "MedStatix Pro 1.9.0 – New Research images studio for every figure that is not a histology slide: photographs (animals, organs, specimens), Western blots and gels, graphs and screenshots, scanned pages and fluorescence images. Automatic type detection and a one-click recipe per type (blots get linear-only changes, never clipped), fine global adjustments, automatic straightening and border removal, before/after comparison and quality metrics. Print sizing by journal column width and dpi (300/600/1000/1200) with a readiness report, faithful enlargement (Lanczos + iterative back-projection, no AI-invented detail, max x4) and honest dpi metadata; TIFF/PNG/JPEG/PDF in RGB, greyscale or CMYK; whole-folder processing with edit logs and a methods paragraph. Windows installer (MedStatixPro-Setup-1.9.0.exe) and portable ZIP."
+          body: "MedStatix Pro 2.0.0 – Expert mode (Settings, or the Research images tab): wider ranges for every histology/IHC adjustment, all tools allowed on blots and gels, enlargement up to x8 and a write-dpi-only option; every edit is still logged and disclosed in the methods. Professional histopathology comments: each AI reading gives a pathologist-style description with semi-quantitative grades (0-3, stated criteria) for inflammation, congestion and vacuolation, plus an editable figure legend in English and Arabic. Batch processing can run the AI reader on a whole study and writes histopathology_report.txt with per-image comments and a group comparison (Kruskal-Wallis, Mann-Whitney vs control, Holm). Windows installer (MedStatixPro-Setup-2.0.0.exe) and portable ZIP."
           files: |
             dist/installer/*.exe
             dist/MedStatixPro-portable-win64.zip

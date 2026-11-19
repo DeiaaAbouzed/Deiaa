@@ -512,15 +512,16 @@ class HistologyStudio(QWidget):
         self.c_haze = QCheckBox(T("Remove haze (black point)", "إزالة الضبابية (نقطة الأسود)")); f.addRow(self.c_haze)
         self.c_wb = QCheckBox(T("White balance", "توازن الأبيض")); f.addRow(self.c_wb)
         self.c_auto = QCheckBox(T("Auto contrast stretch", "تمديد تباين تلقائي")); f.addRow(self.c_auto)
-        self.s_bright = self._slider(-25, 25, 0); f.addRow(T("Brightness", "الإضاءة"), self.s_bright)
-        self.s_contrast = self._slider(60, 160, 100); f.addRow(T("Contrast", "التباين"), self.s_contrast)
-        self.s_gamma = self._slider(60, 160, 100); f.addRow(T("Gamma", "جاما"), self.s_gamma)
-        self.s_sat = self._slider(60, 150, 100); f.addRow(T("Saturation", "التشبع"), self.s_sat)
+        xp = getattr(SETTINGS, "expert_mode", False)      # expert mode: wider ranges, still global and logged
+        self.s_bright = self._slider(-50 if xp else -25, 50 if xp else 25, 0); f.addRow(T("Brightness", "الإضاءة"), self.s_bright)
+        self.s_contrast = self._slider(30 if xp else 60, 250 if xp else 160, 100); f.addRow(T("Contrast", "التباين"), self.s_contrast)
+        self.s_gamma = self._slider(30 if xp else 60, 250 if xp else 160, 100); f.addRow(T("Gamma", "جاما"), self.s_gamma)
+        self.s_sat = self._slider(30 if xp else 60, 200 if xp else 150, 100); f.addRow(T("Saturation", "التشبع"), self.s_sat)
         self.norm = QComboBox(); self.norm.addItems([T("No stain normalization", "بدون توحيد صبغة"), "Reinhard (any stain)", "Macenko (H&E only)"])
         f.addRow(T("Stain", "الصبغة"), self.norm)
         self.s_denoise = self._slider(0, 100, 0); f.addRow(T("Denoise", "إزالة الضوضاء"), self.s_denoise)
         self.s_clahe = self._slider(0, 50, 0); f.addRow(T("Local contrast", "تباين موضعي"), self.s_clahe)
-        self.s_sharpen = self._slider(0, 80, 0); f.addRow(T("Sharpen", "زيادة الحدة"), self.s_sharpen)
+        self.s_sharpen = self._slider(0, 200 if xp else 80, 0); f.addRow(T("Sharpen", "زيادة الحدة"), self.s_sharpen)
         self._sharpen_radius = 1.0
         self._extra = {}
         row = QHBoxLayout()
@@ -582,6 +583,8 @@ class HistologyStudio(QWidget):
         acc = QPushButton("✔ " + T("Accept (with labels)", "اعتماد مع التسميات")); acc.clicked.connect(self.ai_accept)
         rej = QPushButton("✖ " + T("Discard", "تجاهل")); rej.clicked.connect(self.discard_detections)
         row.addWidget(acc); row.addWidget(rej); f.addRow(row)
+        cm = QPushButton("📝 " + T("Professional comment and figure legend…", "تعليق احترافي ووصف الصورة…")); cm.clicked.connect(self.ai_comment)
+        f.addRow(cm)
         rp = QPushButton(T("Add the reading to the results / Word", "إضافة القراءة إلى النتائج / Word")); rp.clicked.connect(self.ai_report)
         f.addRow(rp)
         tb = QPushButton("🎓 " + T("Teach the AI on my slides…", "علّم القارئ على شرائحي…")); tb.clicked.connect(self.ai_teach)
@@ -1129,7 +1132,9 @@ class HistologyStudio(QWidget):
             it.setPen(QPen(QColor(RD.COLOURS["vacuole"]), lw, Qt.DashLine))
             self._suggest(it, "vacuole", v["conf"], T("Vacuole", "فجوة"))
         self.c_overlay.setChecked(True)
-        self.ai_text.setText(RD.describe(r, SETTINGS.language == "ar"))
+        from ..report import histo_comment as HC
+        ar_ = SETTINGS.language == "ar"
+        self.ai_text.setText(HC.image_comment(r, ar=ar_) + " " + T("(Automated draft: confirm before use.)", "(مسودة آلية: راجعها قبل الاعتماد.)"))
         self.last_quant = {k: v for k, v in r["summary"].items()}
         self.last_quant_type = "AI image reader"
         self.render_report()
@@ -1145,6 +1150,16 @@ class HistologyStudio(QWidget):
                 return
         img = IC.measurement_image(self.original, self.steps_done) if self.steps_done else self.original
         TeachDialog(self, img, r, self.name, np_to_qimage).exec()
+
+    def ai_comment(self):
+        from .comment_ui import CommentDialog
+        r = getattr(self, "ai", None)
+        if r is None:
+            QMessageBox.information(self, "", T("Read the image first.", "اقرأ الصورة أولًا.")); return
+        c = getattr(self, "comment_fields", {})
+        d = CommentDialog(self, r, c.get("group", ""), c.get("organ", ""))
+        d.exec()
+        self.comment_fields = {"organ": d.organ.text(), "group": d.group.text()}
 
     def ai_teach_congestion(self):
         from .congestion_ui import CongestionTeachDialog
@@ -1228,7 +1243,10 @@ class HistologyStudio(QWidget):
         from ..plots.figures import styled
         from matplotlib.figure import Figure
         res = Result(T("AI image reading: ", "قراءة الصورة بالذكاء الاصطناعي: ") + self.name)
-        res.text(RD.describe(r, False) + ("\n\n" + RD.describe(r, True) if SETTINGS.language == "ar" else ""))
+        from ..report import histo_comment as HC
+        c = getattr(self, "comment_fields", {})
+        res.text(HC.image_comment(r, c.get("organ", ""), c.get("group", "")) + "\n\n" + HC.legend(r, c.get("organ", ""), c.get("group", ""))
+                 + ("\n\n" + HC.image_comment(r, c.get("organ", ""), c.get("group", ""), ar=True) if SETTINGS.language == "ar" else ""))
         rows = [{"Measure": k, "Value": v} for k, v in (self.last_quant or r["summary"]).items()]
         res.table(pd.DataFrame(rows), "AI-assisted image reading (suggestions reviewed by the investigator)")
         with styled():
@@ -1237,7 +1255,7 @@ class HistologyStudio(QWidget):
             ax2.imshow(self.render_annotated(True)); ax2.set_title("Labels"); ax2.axis("off"); fig.tight_layout()
         res.figure(fig, "Image with the confirmed labels.")
         from ..imaging import nuclei as NUm, cellclass as CCm
-        res.methods(r["methods"] + " References: " + NUm.CITATION + " " + CCm.CITATION)
+        res.methods(r["methods"] + (" " + HC.GRADING_TEXT if r.get("stain") != "IHC" else "") + " References: " + NUm.CITATION + " " + CCm.CITATION)
         self.send_result.emit(res)
 
     def accept_candidates(self):

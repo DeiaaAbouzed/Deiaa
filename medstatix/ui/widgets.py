@@ -365,7 +365,10 @@ class SettingsDialog(QDialog):
         self.upd = QCheckBox("ابحث عن تحديثات عند بدء التشغيل" if ar else "Check for updates at startup")
         self.upd.setChecked(SETTINGS.check_updates)
         f3.addRow("نمط الجداول" if ar else "Table style", self.tstyle)
-        f3.addRow("", self.fallback); f3.addRow("", self.upd)
+        self.expert = QCheckBox("🔓 وضع الخبير: فتح كل حدود أدوات الصور (كل تعديل يظل مسجلًا ومذكورًا في الطرق)" if ar else
+                                "🔓 Expert mode: unlock all image-tool limits (every edit is still logged and disclosed in the methods)")
+        self.expert.setChecked(getattr(SETTINGS, "expert_mode", False))
+        f3.addRow("", self.fallback); f3.addRow("", self.upd); f3.addRow("", self.expert)
         lay.addWidget(g3)
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         bb.accepted.connect(self.accept); bb.rejected.connect(self.reject)
@@ -384,6 +387,7 @@ class SettingsDialog(QDialog):
         SETTINGS.language = self.lang.currentData(); SETTINGS.theme = self.theme.currentData()
         SETTINGS.table_style = self.tstyle.currentData(); SETTINGS.auto_fallback = self.fallback.isChecked()
         SETTINGS.check_updates = self.upd.isChecked()
+        SETTINGS.expert_mode = self.expert.isChecked()
 
 
 # --------------------------------------------------------------------------- simple form dialog

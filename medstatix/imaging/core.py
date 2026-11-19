@@ -368,7 +368,7 @@ def op_flatfield(f, strength=1.0, colour=True):
 
 def op_sharpen(f, amount=0.4, radius=1.0):
     """Unsharp mask applied identically to the whole image (amount ≤ 0.8, radius ≤ 2 px)."""
-    amount = float(np.clip(amount, 0, 0.8)); radius = float(np.clip(radius, 0.5, 2.0))
+    amount = float(np.clip(amount, 0, 2.0)); radius = float(np.clip(radius, 0.3, 5.0))   # pipeline LIMITS apply first
     blur = np.stack([filters.gaussian(f[..., c], radius) for c in range(3)], -1)
     return np.clip(f + amount * (f - blur), 0, 1), {"amount": amount, "radius_px": radius}
 
@@ -505,6 +505,8 @@ FUNCS = {"deconvolve": op_deconvolve, "crop": op_crop, "background_white": op_ba
          "saturation": op_saturation, "reinhard": op_reinhard, "macenko": op_macenko, "denoise": op_denoise}
 
 # Hard limits keep every operation within what image-integrity guidelines accept
+LIMITS_EXPERT = {"brightness": (-0.5, 0.5), "contrast": (0.3, 2.5), "gamma": (0.3, 2.5), "factor": (0.3, 2.0),
+                 "strength": (0.0, 1.0), "amount": (0.0, 2.0), "radius": (0.3, 5.0)}
 LIMITS = {"brightness": (-0.25, 0.25), "contrast": (0.6, 1.6), "gamma": (0.6, 1.6), "factor": (0.6, 1.5), "strength": (0.0, 1.0),
           "amount": (0.0, 0.8), "radius": (0.5, 2.0)}
 
@@ -562,7 +564,8 @@ def apply_pipeline(original: np.ndarray, steps: list[dict]) -> tuple[np.ndarray,
     out_steps = []
     for st in steps:
         params = dict(st.get("params", {}))
-        for k, (lo, hi) in LIMITS.items():
+        from ..core.settings import SETTINGS
+        for k, (lo, hi) in (LIMITS_EXPERT if getattr(SETTINGS, "expert_mode", False) else LIMITS).items():
             if k in params:
                 params[k] = float(np.clip(params[k], lo, hi))
         f, details = FUNCS[st["op"]](f, **params)
@@ -1273,7 +1276,8 @@ def keep_drawn_marks(original: np.ndarray, out: np.ndarray) -> int:
 # ----------------------------------------------------------------------------- measurement & batch
 MEASURE_SAFE_OPS = ("crop", "denoise", "flatfield", "background_white", "white_balance")
 QUANT_KINDS = ["IHC — DAB (H-score, % positive)", "Fibrosis — Masson trichrome", "Fibrosis — Sirius red",
-               "Fibrosis — Van Gieson", "H&E — inflammatory cell candidates", "H&E — congestion / RBC areas", "None (enhance only)"]
+               "Fibrosis — Van Gieson", "H&E — inflammatory cell candidates", "H&E — congestion / RBC areas",
+               "AI reader — cells, foci, congestion, grades + professional comments", "None (enhance only)"]
 
 
 def measurement_image(original: np.ndarray, steps: list[dict]) -> np.ndarray:

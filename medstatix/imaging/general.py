@@ -276,12 +276,13 @@ def preset(kind: str, img=None) -> list[dict]:
     raise ValueError(kind)
 
 
-def apply(img, steps, kind=None):
-    """Apply steps in order. Returns (uint8 image, recorded steps)."""
+def apply(img, steps, kind=None, expert=False):
+    """Apply steps in order. Returns (uint8 image, recorded steps). In expert mode blots accept every operation
+    (each one is still recorded and disclosed in the methods text)."""
     f = to_f(img)
     done = []
     for st in steps:
-        if kind == "blot" and st["op"] in NOT_FOR_BLOTS:
+        if kind == "blot" and st["op"] in NOT_FOR_BLOTS and not expert:
             continue
         fn = OPS[st["op"]][0]
         f, det = fn(f, **st.get("params", {}))
@@ -375,9 +376,13 @@ class FigureLog:
         t = ("Images were adjusted in MedStatix Pro with global operations applied equally to the whole image"
              + (f" ({', '.join(names)})" if names else "") + ". No local editing, cloning or generative/AI-based pixel "
              "synthesis was performed and no features were added, removed or obscured. Original files were retained.")
-        if self.kind == "blot":
+        nonlin = [OPS[s["op"]][1].lower() for s in self.steps if s["op"] in NOT_FOR_BLOTS]
+        if self.kind == "blot" and not nonlin:
             t += (" Blot and gel images received only linear adjustments (greyscale conversion, rotation and levels) "
                   "applied to the whole image; quantification was performed on the unprocessed images.")
+        elif self.kind == "blot":
+            t += (f" Non-linear adjustments ({', '.join(nonlin)}) were applied uniformly to the whole blot/gel image for "
+                  "display only; quantification was performed on the unprocessed images.")
         if self.resize and self.resize.get("method", "none") != "none":
             m = self.resize["method"]
             t += (f" Images were resampled by a factor of {self.resize['factor']:.2f} ({m})"
@@ -393,13 +398,22 @@ class FigureLog:
 
 
 def process(img, kind="auto", steps=None, width_mm=None, dpi=None, upscale_method="sharp", allow_upscale=True,
-            max_factor=4.0):
-    """Full pipeline for one image: enhancement, then resampling to the print size. Returns (image, FigureLog, plan)."""
+            max_factor=None, expert=False, tag_only=False):
+    """Full pipeline for one image: enhancement, then resampling to the print size. Returns (image, FigureLog, plan).
+    expert: blots accept every operation and enlargement may reach ×8 (or whatever the requested size needs, up to ×16
+    with max_factor). tag_only: keep the pixels and only write the requested dpi; the printed width then follows from
+    the pixels (pixels / dpi) and is reported as such."""
     kind = detect_kind(img) if kind == "auto" else kind
     steps = preset(kind, img) if steps is None else steps
-    out, done = apply(img, steps, kind)
+    out, done = apply(img, steps, kind, expert)
     log = FigureLog(kind=kind, steps=done)
     plan = None
+    max_factor = max_factor or (8.0 if expert else 4.0)
+    if tag_only and dpi:
+        plan = print_plan(out.shape, width_mm or out.shape[1] / dpi * 25.4, dpi)
+        log.output = {"dpi": int(dpi), "width_mm": round(out.shape[1] / dpi * 25.4, 1), "requested_dpi": dpi,
+                      "tag_only": True}
+        return out, log, plan
     if width_mm and dpi:
         plan = print_plan(out.shape, width_mm, dpi)
         f = plan["factor"]

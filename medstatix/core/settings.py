@@ -23,6 +23,7 @@ class Settings:
     auto_fallback: bool = True      # add the non-parametric alternative when assumptions fail
     ai_user_model: bool = True      # use the nucleus classifier fine-tuned on the user's own slides when present
     check_updates: bool = True      # check GitHub releases at startup
+    expert_mode: bool = False      # unlock the wider ranges / options of the image tools (every edit is still logged)
     interp_lang: str = "same"       # Word export interpretation language: same | en | ar | both
 
     def as_dict(self):
