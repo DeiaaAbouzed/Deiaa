@@ -1207,10 +1207,10 @@ class MainWindow(QMainWindow):
     def open_settings(self):
         dlg = SettingsDialog(self)
         if dlg.exec():
-            lang_before, theme_before = SETTINGS.language, SETTINGS.theme
+            before = (SETTINGS.language, SETTINGS.theme, SETTINGS.expert_mode)
             dlg.apply()
             self._save_settings()
-            if (lang_before, theme_before) != (SETTINGS.language, SETTINGS.theme):
+            if before != (SETTINGS.language, SETTINGS.theme, SETTINGS.expert_mode):   # expert mode widens the image sliders
                 self.build()
             self.restyle_all()
 
