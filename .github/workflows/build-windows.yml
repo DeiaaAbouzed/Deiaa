@@ -44,10 +44,10 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: medstatix-v2.1.0
-          name: MedStatix Pro 2.1.0 (Windows)
+          tag_name: medstatix-v2.1.1
+          name: MedStatix Pro 2.1.1 (Windows)
           target_commitish: ${{ github.sha }}
-          body: "MedStatix Pro 2.1.0 – Write the full paper (Output menu, Ctrl+Shift+P): title, abstract, introduction, complete materials and methods, results, discussion, conclusion, declarations, tables, legends and figures in one Word file, built from your data, fixed academic templates and built-in knowledge of common pharmacology/toxicology markers (no AI text generation); what only the authors can write is left as highlighted prompts. In-app PubMed search, RIS import/export and EndNote temporary citations (Update Citations and Bibliography formats them in any journal style), or numbered/author-year reference lists. Expert-mode change now applies without restarting. Windows installer (MedStatixPro-Setup-2.1.0.exe) and portable ZIP."
+          body: "MedStatix Pro 2.1.1 – Quick access to the newest tools on the toolbar, next to Recommendations: Full paper (Word + EndNote), Improve images (research images: quality, resolution, dpi), Pro comment (histopathology comment and legend), and a ✨ New tools menu that also holds the folder histopathology report, brush teaching of congestion and the Expert mode switch. Open/save, export, Settings and Language now sit on a second toolbar row, so nothing hides in the overflow. Includes everything in 2.1.0 (full-paper writer, PubMed, EndNote/RIS). Windows installer (MedStatixPro-Setup-2.1.1.exe) and portable ZIP."
           files: |
             dist/installer/*.exe
             dist/MedStatixPro-portable-win64.zip

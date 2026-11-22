@@ -12,7 +12,7 @@ from PySide6.QtGui import QAction, QIcon, QImage, QKeySequence, QPixmap, QTextDo
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDoubleSpinBox, QFileDialog, QFormLayout, QGroupBox,
                                QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QListView, QListWidget,
                                QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QSplitter, QTableView, QTabWidget,
-                               QTextBrowser, QToolBar, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QComboBox, QDialog)
+                               QTextBrowser, QToolBar, QToolButton, QMenu, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QComboBox, QDialog)
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 
 from ..analyses import REGISTRY, CATEGORIES, run
@@ -151,6 +151,19 @@ class MainWindow(QMainWindow):
         self.a_panel = self._act("🧩  " + ("لوحة رسوم متعددة (A, B, C)…" if A else "Multi-panel figure (A, B, C)…"), self.panel_builder)
         self.a_animal = self._act("🐀  " + ("أدوات دراسات الحيوان (عشوائية، حجم عينة، شواذ، ARRIVE)…" if A
                                          else "Animal-study toolkit (randomise, sample size, outliers, ARRIVE)…"), self.animal_toolkit)
+        # quick access to the newest tools (toolbar, next to Recommendations)
+        self.a_q_paper = self._act("📚  " + ("البحث الكامل" if A else "Full paper"), self.write_paper,
+                                   tip="كتابة البحث كاملًا (Word + EndNote) — Ctrl+Shift+P" if A else "Write the full paper (Word + EndNote) — Ctrl+Shift+P")
+        self.a_q_images = self._act("🖼  " + ("تحسين الصور" if A else "Improve images"), self.open_images_tab, "Ctrl+Shift+I",
+                                    tip="تحسين صور البحث: الجودة والدقة و dpi" if A else "Research images: quality, resolution and dpi")
+        self.a_q_comment = self._act("📝  " + ("تعليق احترافي" if A else "Pro comment"), self.quick_comment, "Ctrl+Shift+C",
+                                     tip="تعليق هستوباثولوجي احترافي ووصف الصورة (بعد قراءة الصورة)" if A
+                                     else "Professional histopathology comment and figure legend (after reading the image)")
+        self.a_q_batch = self._act("🗂  " + ("تقرير هستو لمجلد صور…" if A else "Histopathology report for a folder…"), self.quick_batch)
+        self.a_q_cong = self._act("🩸  " + ("تعليم الاحتقان بالفرشاة…" if A else "Teach congestion (brush)…"), self.quick_congestion)
+        self.a_q_expert = QAction("🛠  " + ("وضع الخبير" if A else "Expert mode"), self)
+        self.a_q_expert.setCheckable(True); self.a_q_expert.setChecked(bool(SETTINGS.expert_mode))
+        self.a_q_expert.toggled.connect(self.set_expert_mode)
         self.a_tmpl = self._act("🧪  " + ("قوالب دراسات الأدوية والسموم…" if A else "Pharmacology / toxicology study templates…"), self.study_templates)
 
     def _build_menus(self):
@@ -215,17 +228,35 @@ class MainWindow(QMainWindow):
         tb = QToolBar("main"); tb.setMovable(False); tb.setIconSize(QSize(18, 18))
         tb.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.addToolBar(tb)
-        for a in (self.a_open, self.a_paste, self.a_save, self.a_psave):
-            tb.addAction(a)
-        tb.addSeparator()
         tb.addAction(self.a_smart)
         tb.widgetForAction(self.a_smart).setObjectName("primary")
         tb.addAction(self.a_assist)
         tb.addAction(self.a_wizard)
         tb.addAction(self.a_recs)
         tb.addSeparator()
-        for a in (self.a_word, self.a_ms, self.a_excel, self.a_settings, self.a_lang):
+        for a in (self.a_q_paper, self.a_q_images, self.a_q_comment):
             tb.addAction(a)
+        A = SETTINGS.language == "ar"
+        more = QToolButton(); more.setText("✨  " + ("الجديد" if A else "New tools")); more.setPopupMode(QToolButton.InstantPopup)
+        more.setToolTip("كل الإضافات الأخيرة في مكان واحد" if A else "All the latest additions in one place")
+        mm = QMenu(more)
+        for a in (self.a_q_paper, self.a_q_images, self.a_q_comment, self.a_q_batch, self.a_q_cong):
+            mm.addAction(a)
+        mm.addSeparator(); mm.addAction(self.a_q_expert)
+        more.setMenu(mm); tb.addWidget(more); self._new_menu_btn = more
+        # second row: output, settings and language (the first row is full, and these used to hide in the » overflow)
+        self.addToolBarBreak()
+        tb2 = QToolBar("output"); tb2.setMovable(False); tb2.setIconSize(QSize(18, 18))
+        tb2.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.addToolBar(tb2)
+        for a in (self.a_open, self.a_paste, self.a_save, self.a_psave):
+            tb2.addAction(a)
+        tb2.addSeparator()
+        for a in (self.a_word, self.a_ms, self.a_excel):
+            tb2.addAction(a)
+        tb2.addSeparator()
+        for a in (self.a_settings, self.a_lang):
+            tb2.addAction(a)
 
     def _build_sidebar(self):
         w = QWidget(); w.setObjectName("sidebar")
@@ -1245,6 +1276,41 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, tr("error"), str(e))
         finally:
             QApplication.restoreOverrideCursor()
+
+    # ------------------------------------------------------------------ quick access to the newest tools
+    def open_images_tab(self):
+        self.tabs.setCurrentWidget(self.figstudio)
+
+    def quick_comment(self):
+        self.tabs.setCurrentWidget(self.histo)
+        if getattr(self.histo, "ai", None) is None:
+            QMessageBox.information(self, "", "افتح صورة في تبويب الهستولوجي واضغط قراءة الصورة (AI) أولًا، ثم اضغط تعليق احترافي."
+                                    if SETTINGS.language == "ar" else
+                                    "Open an image in the Histology tab and run the AI reader first, then press Pro comment.")
+            return
+        self.histo.ai_comment()
+
+    def quick_batch(self):
+        self.tabs.setCurrentWidget(self.histo)
+        self.histo.batch()
+
+    def quick_congestion(self):
+        self.tabs.setCurrentWidget(self.histo)
+        if self.histo.original is None:
+            QMessageBox.information(self, "", "افتح صورة في تبويب الهستولوجي أولًا." if SETTINGS.language == "ar"
+                                    else "Open an image in the Histology tab first.")
+            return
+        self.histo.ai_teach_congestion()
+
+    def set_expert_mode(self, on):
+        if bool(on) == bool(SETTINGS.expert_mode):
+            return
+        SETTINGS.expert_mode = bool(on)
+        self._save_settings()
+        self.statusBar().showMessage(("وضع الخبير مفعّل" if on else "وضع الخبير متوقف") if SETTINGS.language == "ar"
+                                     else ("Expert mode on" if on else "Expert mode off"), 5000)
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self.build)           # rebuild after the menu closes so the sliders widen
 
     # ------------------------------------------------------------------ settings / language
     def open_settings(self):

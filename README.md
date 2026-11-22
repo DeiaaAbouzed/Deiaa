@@ -39,6 +39,11 @@ MedStatix Pro brings together what researchers usually spread across SPSS, Graph
 | Charts | Heatmap, volcano, radar, Kaplan–Meier, forest |
 | Sample size | **G*Power-style a priori / post hoc / sensitivity**, t-tests, proportions, ANOVA, correlation, log-rank (Schoenfeld), diagnostic sensitivity (Buderer), Mead's resource equation for animal studies |
 
+## New in v2.1.1: the newest tools on the toolbar
+Next to **⭐ Recommendations** on the toolbar: **📚 Full paper**, **🖼 Improve images** (Ctrl+Shift+I), **📝 Pro comment**
+(Ctrl+Shift+C, after the AI reader) and a **✨ New tools** menu that also holds the folder histopathology report, brush
+teaching of congestion and the **Expert mode** switch. Open/save, export, Settings and Language sit on a second toolbar row.
+
 ## New in v2.1: Write the full paper
 `report/paper.py`, `report/refs.py`, `report/markers_kb.py`, `ui/paper_ui.py`: a complete manuscript (abstract → declarations, tables, legends, figures) from the study data and fixed templates, without a language model; author-only statements are highlighted prompts. PubMed search (E-utilities), RIS import/export, EndNote temporary citations or Vancouver/APA lists.
 
