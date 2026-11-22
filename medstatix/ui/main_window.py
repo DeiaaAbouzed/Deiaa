@@ -144,6 +144,8 @@ class MainWindow(QMainWindow):
         self.a_rerun = self._act("🔁  " + ("إعادة تشغيل كل التحليلات على البيانات الحالية" if A else "Re-run all analyses on current data"),
                                  self.rerun_all_current, "Ctrl+Shift+R")
         self.a_journal = self._act("📰  " + ("المجلة المستهدفة (مقاسات الرسوم)…" if A else "Target journal (figure specs)…"), self.choose_journal)
+        self.a_paper = self._act("📚  " + ("كتابة البحث كاملًا (Word + EndNote)…" if A else "Write the full paper (Word + EndNote)…"),
+                                 self.write_paper, "Ctrl+Shift+P")
         self.a_ms = self._act("📄  " + ("بناء المخطوطة (Word)…" if A else "Build manuscript (Word)…"), self.build_manuscript, "Ctrl+Shift+M")
         self.a_rev = self._act("🧾  " + ("تقرير المحكّمين الإحصائي…" if A else "Statistical report for reviewers…"), self.reviewer_report)
         self.a_panel = self._act("🧩  " + ("لوحة رسوم متعددة (A, B, C)…" if A else "Multi-panel figure (A, B, C)…"), self.panel_builder)
@@ -188,7 +190,7 @@ class MainWindow(QMainWindow):
         o.addAction(self._act("🎨  " + tr("restyle"), self.restyle_all))
         o.addAction(self._act("🖼  " + tr("export_all_figs"), self.export_all_figs))
         p = mb.addMenu("📰  " + ("النشر" if SETTINGS.language == "ar" else "Publish"))
-        for x in (self.a_journal, self.a_ms, self.a_rev, self.a_panel):
+        for x in (self.a_journal, self.a_paper, self.a_ms, self.a_rev, self.a_panel):
             p.addAction(x)
         t = mb.addMenu("🧰  " + ("أدوات" if SETTINGS.language == "ar" else "Tools"))
         for x in (self.a_tmpl, self.a_animal):
@@ -1091,6 +1093,47 @@ class MainWindow(QMainWindow):
             return IC.EditLog(h.name, h.steps_done).methods_text()
         except Exception:
             return ""
+
+    def write_paper(self):
+        if not self.entries:
+            QMessageBox.information(self, "", self._A("Run the analyses first (Smart Analyze on your markers).",
+                                                      "قم بإجراء التحليلات أولًا (التحليل الذكي على مؤشراتك).")); return
+        from .paper_ui import PaperDialog
+        from ..report.paper import build_paper
+        results = [e["result"] for e in self.entries]
+        groups = []
+        for res in results:
+            for b in res.blocks:
+                if b.kind == "results" and isinstance(b.content, dict) and b.content.get("facts"):
+                    groups = b.content["facts"].get("levels") or groups
+        h = getattr(self, "histo", None); htxt = ""
+        if h is not None and getattr(h, "ai", None):
+            from ..report import histo_comment as HC
+            c = getattr(h, "comment_fields", {})
+            htxt = HC.image_comment(h.ai, c.get("organ", ""), c.get("group", ""))
+        dlg = PaperDialog(self, groups, htxt, self._histo_methods())
+        if dlg.exec() != QDialog.Accepted:
+            return
+        dlg.remember()
+        st = dlg.study()
+        name = (st.get("title") or "Paper")[:60].replace("/", "-").replace(":", "")
+        path, _ = QFileDialog.getSaveFileName(self, "", f"{name}.docx", "Word (*.docx)")
+        if not path:
+            return
+        if not path.lower().endswith(".docx"):
+            path += ".docx"
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            out = build_paper(path, st, results, dlg.refs, dlg.style.currentData(), dlg.journal.currentData() or "",
+                              dlg.hmeth.toPlainText().strip(), dlg.histo.toPlainText().strip())
+        except Exception as e:
+            QApplication.restoreOverrideCursor(); QMessageBox.critical(self, tr("error"), str(e)); return
+        QApplication.restoreOverrideCursor()
+        QMessageBox.information(self, "", self._A(
+            f"Saved: {path}\n\n{out['words']} words, {out['cited']} references cited, {out['tables']} tables, {out['figures']} figures.\n"
+            f"{out['prompts']} [yellow prompts] are left for you to complete." + ("\nThe RIS file for EndNote was saved next to it." if dlg.refs else ""),
+            f"تم الحفظ: {path}\n\n{out['words']} كلمة، {out['cited']} مرجعًا مستشهدًا به، {out['tables']} جداول، {out['figures']} أشكال.\n"
+            f"بقي {out['prompts']} تلميحًا [أصفر] لتكملها أنت." + ("\nوحُفظ ملف RIS لـ EndNote بجواره." if dlg.refs else "")))
 
     def build_manuscript(self):
         if not self.entries:

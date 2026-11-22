@@ -44,10 +44,10 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: medstatix-v2.0.0
-          name: MedStatix Pro 2.0.0 (Windows)
+          tag_name: medstatix-v2.1.0
+          name: MedStatix Pro 2.1.0 (Windows)
           target_commitish: ${{ github.sha }}
-          body: "MedStatix Pro 2.0.0 – Expert mode (Settings, or the Research images tab): wider ranges for every histology/IHC adjustment, all tools allowed on blots and gels, enlargement up to x8 and a write-dpi-only option; every edit is still logged and disclosed in the methods. Professional histopathology comments: each AI reading gives a pathologist-style description with semi-quantitative grades (0-3, stated criteria) for inflammation, congestion and vacuolation, plus an editable figure legend in English and Arabic. Batch processing can run the AI reader on a whole study and writes histopathology_report.txt with per-image comments and a group comparison (Kruskal-Wallis, Mann-Whitney vs control, Holm). Windows installer (MedStatixPro-Setup-2.0.0.exe) and portable ZIP."
+          body: "MedStatix Pro 2.1.0 – Write the full paper (Output menu, Ctrl+Shift+P): title, abstract, introduction, complete materials and methods, results, discussion, conclusion, declarations, tables, legends and figures in one Word file, built from your data, fixed academic templates and built-in knowledge of common pharmacology/toxicology markers (no AI text generation); what only the authors can write is left as highlighted prompts. In-app PubMed search, RIS import/export and EndNote temporary citations (Update Citations and Bibliography formats them in any journal style), or numbered/author-year reference lists. Expert-mode change now applies without restarting. Windows installer (MedStatixPro-Setup-2.1.0.exe) and portable ZIP."
           files: |
             dist/installer/*.exe
             dist/MedStatixPro-portable-win64.zip

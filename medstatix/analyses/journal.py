@@ -173,9 +173,10 @@ def journal_table(df, variables, group, control="", model="", dispersion="Mean Â
                                   test_name=f"{test} followed by {post}"))
     res.table(tab, f"Effect of the treatments on {', '.join(cols)}" if len(cols) <= 4 else "Summary of all markers", note, p_columns=())
     try:
-        from ..report.narrative import write
+        from ..report.narrative import facts, write
         r_en, r_ar = write(info, levels, ctrl, mdl, sem)
-        res.blocks.append(Block("results", {"en": r_en, "ar": r_ar}))
+        res.blocks.append(Block("results", {"en": r_en, "ar": r_ar, "facts": facts(info, levels, ctrl, mdl),
+                                            "tests": sorted({I.get("test", "") for I in info.values()} - {""})}))
     except Exception:        # prose is a convenience; never block the table
         pass
     detail = pd.DataFrame([{"Marker": v, "Test": footer[v][0], "Post hoc": footer[v][1], "Statistic": footer[v][2],

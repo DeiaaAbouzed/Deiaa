@@ -180,3 +180,37 @@ def write(info: dict, levels: list, ctrl: str, mdl: str, sem=False, table_ref="T
                       f"(mean recovery about {tot / n1:.0f}%), {rest}. Values are {disp}.")
             ar.append(f"إجمالًا، كانت {best} الأكثر حماية: حسّنت {n1} من {len(sig_model)} مؤشرات متأثرة وأعادت {n0} منها لقيم الضابطة.")
     return "\n\n".join(en), "\n".join(ar)
+
+
+def facts(info: dict, levels: list, ctrl: str, mdl: str) -> dict:
+    """Structured findings for the Discussion / Abstract: per marker, the model effect and each treatment's effect."""
+    others_ctrl = [l for l in levels if l not in (ctrl, mdl) and is_control(l)]
+    treats = [l for l in levels if l not in (ctrl, mdl) and l not in others_ctrl]
+    out = {"control": ctrl, "model": mdl, "treatments": treats, "levels": list(levels), "markers": []}
+    score = {t: [0, 0, 0.0] for t in treats}
+    for v, I in info.items():
+        g, P, npar = I["g"], I["pairs"], I["npar"]
+        label, unit = split_unit(v)
+        if not mdl or mdl not in g or ctrl not in g:
+            continue
+        c, m = _centre(g[ctrl], npar), _centre(g[mdl], npar)
+        p_mc = P.get((mdl, ctrl))
+        row = {"label": label, "unit": unit, "up": bool(m > c), "change": _change(m, c), "p": p_mc,
+               "sig": bool(p_mc is not None and p_mc < 0.05), "treat": []}
+        for t in treats:
+            if t not in g:
+                continue
+            mt = _centre(g[t], npar)
+            rec = (m - mt) / (m - c) * 100 if m != c else 0.0
+            p_tm, p_tc = P.get((t, mdl), 1.0), P.get((t, ctrl), 0.0)
+            improved = bool(row["sig"] and p_tm < 0.05 and rec > 0)
+            normal = bool(improved and p_tc >= 0.05)
+            row["treat"].append({"group": t, "recovery": rec, "improved": improved, "normalised": normal, "p_vs_model": p_tm})
+            if improved:
+                score[t][1] += 1; score[t][2] += min(rec, 100.0); score[t][0] += normal
+        out["markers"].append(row)
+    if treats:
+        out["best"] = max(treats, key=lambda t: tuple(score[t]))
+        out["score"] = {t: {"normalised": s[0], "improved": s[1], "mean_recovery": s[2] / s[1] if s[1] else 0.0}
+                        for t, s in score.items()}
+    return out
