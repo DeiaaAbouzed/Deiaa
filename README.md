@@ -39,6 +39,16 @@ MedStatix Pro brings together what researchers usually spread across SPSS, Graph
 | Charts | Heatmap, volcano, radar, Kaplan–Meier, forest |
 | Sample size | **G*Power-style a priori / post hoc / sensitivity**, t-tests, proportions, ANOVA, correlation, log-rank (Schoenfeld), diagnostic sensitivity (Buderer), Mead's resource equation for animal studies |
 
+## New in v2.2: a better full paper, optional Claude writing, automatic references
+- **Writing mode** (Write the full paper → Output tab): *Templates only*, or *Claude* with your Anthropic API key. Claude
+  writes Highlights, Abstract, Introduction, Results text, Discussion and Conclusion from your data and references only.
+  Numbers that are not in your data are flagged `[check: …]`, unknown citations become `[ref]`, the Methods stay as built
+  from the data, and an AI-use declaration is added.
+- **Automatic references**: when the list has fewer than 15, the app searches PubMed (model, compound, each measured
+  pathway) and adds them; a reference list is always written.
+- Results come from the multi-marker summary (one section), per-test tables go to *Supplementary material*, one
+  statistics paragraph, marker-specific Discussion sentences, IQR on median bar charts.
+
 ## New in v2.1.1: the newest tools on the toolbar
 Next to **⭐ Recommendations** on the toolbar: **📚 Full paper**, **🖼 Improve images** (Ctrl+Shift+I), **📝 Pro comment**
 (Ctrl+Shift+C, after the AI reader) and a **✨ New tools** menu that also holds the folder histopathology report, brush

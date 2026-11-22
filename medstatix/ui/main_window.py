@@ -1153,18 +1153,78 @@ class MainWindow(QMainWindow):
             return
         if not path.lower().endswith(".docx"):
             path += ".docx"
+        from ..report import refs as RF
+        from ..report import ai_writer as AW
+        from ..report.paper import paper_context
+        refs = list(dlg.refs)
+        hm, hr = dlg.hmeth.toPlainText().strip(), dlg.histo.toPlainText().strip()
+        journal = dlg.journal.currentData() or ""
+        markers = [m["label"] for res in results for b in res.blocks
+                   if b.kind == "results" and isinstance(b.content, dict) and b.content.get("facts")
+                   for m in b.content["facts"].get("markers", [])]
+        added = 0
+        if dlg.auto_refs.isChecked() and len(refs) < 15:
+            try:
+                found = self._busy(lambda: RF.auto_references(st, markers), self._A("Searching PubMed for references…",
+                                                                                    "جارٍ البحث في PubMed عن المراجع…"))
+                keys = {r.key() for r in refs}
+                new = [r for r in found if r.key() not in keys]
+                refs += new; added = len(new)
+                if new:        # keep them for the next paper on the same study
+                    dlg.refs = refs; dlg.remember()
+            except Exception as e:
+                QMessageBox.warning(self, "", self._A(f"PubMed could not be reached ({e}); the paper is written with your own references only.",
+                                                      f"تعذر الوصول إلى PubMed ({e})؛ سيُكتب البحث بمراجعك فقط."))
+        ai, rep, model = None, {}, ""
+        if dlg.mode.currentData() == "ai":
+            model = dlg.model.currentData()
+            ctx = paper_context(st, results, refs, journal, hm, hr)
+            try:
+                ai, rep = self._busy(lambda: AW.write_sections(ctx, AW.api_key(dlg.key.text()), model),
+                                     self._A("Claude is writing the paper (1–3 minutes)…", "Claude يكتب البحث (1–3 دقائق)…"))
+            except Exception as e:
+                if QMessageBox.question(self, tr("error"), self._A(f"{e}\n\nWrite the paper with the templates instead?",
+                                                                   f"{e}\n\nهل تكتب البحث بالقوالب بدلًا من ذلك؟")) != QMessageBox.Yes:
+                    return
+                ai = None
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
-            out = build_paper(path, st, results, dlg.refs, dlg.style.currentData(), dlg.journal.currentData() or "",
-                              dlg.hmeth.toPlainText().strip(), dlg.histo.toPlainText().strip())
+            out = build_paper(path, st, results, refs, dlg.style.currentData(), journal, hm, hr,
+                              ai_sections=ai, ai_model=AW.MODELS.get(model, model).split(" (")[0] if ai else "")
         except Exception as e:
             QApplication.restoreOverrideCursor(); QMessageBox.critical(self, tr("error"), str(e)); return
         QApplication.restoreOverrideCursor()
+        flags = len(rep.get("numbers", [])) + len(rep.get("bad_citations", []))
         QMessageBox.information(self, "", self._A(
-            f"Saved: {path}\n\n{out['words']} words, {out['cited']} references cited, {out['tables']} tables, {out['figures']} figures.\n"
-            f"{out['prompts']} [yellow prompts] are left for you to complete." + ("\nThe RIS file for EndNote was saved next to it." if dlg.refs else ""),
-            f"تم الحفظ: {path}\n\n{out['words']} كلمة، {out['cited']} مرجعًا مستشهدًا به، {out['tables']} جداول، {out['figures']} أشكال.\n"
-            f"بقي {out['prompts']} تلميحًا [أصفر] لتكملها أنت." + ("\nوحُفظ ملف RIS لـ EndNote بجواره." if dlg.refs else "")))
+            f"Saved: {path}\n\n{out['words']} words, {out['cited']} references cited" + (f" ({added} found on PubMed)" if added else "")
+            + f", {out['tables']} tables, {out['figures']} figures" + (f", {out['supplementary']} supplementary items" if out.get('supplementary') else "") + ".\n"
+            + (f"Written by Claude; {flags} item(s) flagged [check: …] for you to verify.\n" if ai else "")
+            + f"{out['prompts']} [yellow prompts] are left for you to complete." + ("\nThe RIS file for EndNote was saved next to it." if refs else ""),
+            f"تم الحفظ: {path}\n\n{out['words']} كلمة، {out['cited']} مرجعًا مستشهدًا به" + (f" (منها {added} من PubMed)" if added else "")
+            + f"، {out['tables']} جداول، {out['figures']} أشكال" + (f"، {out['supplementary']} عناصر تكميلية" if out.get('supplementary') else "") + ".\n"
+            + (f"كتبه Claude؛ عُلِّم {flags} عنصرًا [check: …] لتتحقق منه.\n" if ai else "")
+            + f"بقي {out['prompts']} تلميحًا [أصفر] لتكملها أنت." + ("\nوحُفظ ملف RIS لـ EndNote بجواره." if refs else "")))
+
+    def _busy(self, fn, label):
+        """Run fn in a worker thread while a progress dialog keeps the window responsive; re-raise its error."""
+        import threading
+        from PySide6.QtWidgets import QProgressDialog
+        box = {}
+
+        def work():
+            try:
+                box["v"] = fn()
+            except Exception as e:          # noqa: BLE001 — shown to the user by the caller
+                box["e"] = e
+        th = threading.Thread(target=work, daemon=True); th.start()
+        pd_ = QProgressDialog(label, None, 0, 0, self); pd_.setWindowModality(Qt.WindowModal); pd_.setMinimumDuration(0)
+        pd_.show()
+        while th.is_alive():
+            QApplication.processEvents(); th.join(0.05)
+        pd_.close(); pd_.deleteLater()
+        if "e" in box:
+            raise box["e"]
+        return box.get("v")
 
     def build_manuscript(self):
         if not self.entries:

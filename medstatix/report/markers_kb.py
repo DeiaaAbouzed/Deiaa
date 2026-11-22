@@ -101,3 +101,47 @@ def group_markers(markers: list[str]) -> dict:
     for mk in markers:
         out.setdefault(pathway_of(mk), []).append(mk)
     return out
+
+
+# What each common marker reports on, one textbook sentence each. The Discussion uses only the sentences of the markers
+# that were actually measured, so it never talks about an enzyme the study did not assay.
+MARKER_ROLES = [
+    (r"\bmda\b|malondialdehyde|tbars|lipid peroxid", "Malondialdehyde is a stable end product of lipid peroxidation and is the most widely used index of oxidative damage to membranes."),
+    (r"\bgsh\b|reduced glutathione", "Reduced glutathione is the main non-enzymatic intracellular antioxidant; it is consumed directly by reactive oxygen species and as a cofactor of glutathione peroxidase, so its depletion indicates that antioxidant reserves have been exhausted."),
+    (r"\bsod\b|superoxide dismutase", "Superoxide dismutase converts superoxide to hydrogen peroxide and is the first enzymatic barrier against oxidative injury."),
+    (r"\bcat\b|catalase", "Catalase decomposes hydrogen peroxide to water and oxygen, preventing the formation of hydroxyl radicals."),
+    (r"\bgpx\b|glutathione peroxidase", "Glutathione peroxidase reduces hydrogen peroxide and lipid hydroperoxides at the expense of reduced glutathione."),
+    (r"\btac\b|\btas\b|total antioxidant", "Total antioxidant capacity summarises the combined activity of enzymatic and non-enzymatic antioxidants."),
+    (r"\bno\b|nitric oxide|nitrite", "Large amounts of nitric oxide, produced mainly by inducible nitric oxide synthase in activated macrophages and neutrophils, react with superoxide to form peroxynitrite, which nitrates proteins and amplifies oxidative injury."),
+    (r"\bmpo\b|myeloperoxidase", "Myeloperoxidase is stored in the azurophilic granules of neutrophils, so its tissue activity is a standard index of neutrophil infiltration; the hypochlorous acid it generates adds to the oxidative burden."),
+    (r"tnf", "Tumour necrosis factor-α is released early by resident macrophages and drives the expression of adhesion molecules and further cytokines."),
+    (r"\bil-?1", "Interleukin-1β is produced after inflammasome activation and is a potent amplifier of leukocyte recruitment."),
+    (r"\bil-?6\b", "Interleukin-6 propagates the inflammatory response and the acute-phase reaction."),
+    (r"\bil-?10\b", "Interleukin-10 restrains cytokine production by activated macrophages and contributes to the resolution of inflammation."),
+    (r"nf-?κb|nf-?kb", "Nuclear factor-κB is the transcription factor that controls the expression of most pro-inflammatory cytokines and of inducible nitric oxide synthase."),
+    (r"cox-?2", "Cyclo-oxygenase-2 is induced at sites of inflammation and generates pro-inflammatory prostaglandins."),
+    (r"\binos\b", "Inducible nitric oxide synthase produces sustained, high levels of nitric oxide during inflammation."),
+    (r"nrf2|nrf-2", "Nrf2 is the transcription factor that coordinates the expression of antioxidant and detoxifying enzymes."),
+    (r"\bho-?1\b|heme oxygenase|haem oxygenase", "Haem oxygenase-1 degrades haem to biliverdin, carbon monoxide and iron and has antioxidant and anti-inflammatory actions."),
+    (r"caspase", "Caspase-3 is the principal executioner caspase of apoptosis."),
+    (r"\bbax\b", "Bax permeabilises the outer mitochondrial membrane and allows the release of cytochrome c."),
+    (r"bcl-?2", "Bcl-2 opposes mitochondrial permeabilisation and protects cells from apoptosis."),
+    (r"\balt\b|alanine aminotransferase", "Alanine aminotransferase is largely confined to hepatocytes, so its serum activity is a sensitive index of hepatocellular injury."),
+    (r"\bast\b|aspartate aminotransferase", "Aspartate aminotransferase leaks from damaged hepatocytes and, to a lesser extent, from muscle."),
+    (r"\balp\b|alkaline phosphatase", "Alkaline phosphatase rises mainly with cholestatic and biliary injury."),
+    (r"creatinine", "Serum creatinine rises when glomerular filtration falls."),
+    (r"\burea\b|\bbun\b", "Blood urea rises with reduced glomerular filtration and increased protein catabolism."),
+    (r"kim-?1", "Kidney injury molecule-1 is shed from injured proximal tubular cells and is an early marker of tubular damage."),
+    (r"ngal", "Neutrophil gelatinase-associated lipocalin is released early from injured renal tubules."),
+    (r"ck-?mb", "CK-MB is released from damaged cardiomyocytes."),
+    (r"troponin|\bctn", "Cardiac troponins are the most specific circulating markers of myocardial necrosis."),
+    (r"\bldh\b|lactate dehydrogenase", "Lactate dehydrogenase leaks from cells whose membranes have been damaged and is a general index of cytotoxicity."),
+]
+
+
+def marker_role(marker: str) -> str:
+    m = marker.lower()
+    for rx, sentence in MARKER_ROLES:
+        if re.search(rx, m):
+            return sentence
+    return ""

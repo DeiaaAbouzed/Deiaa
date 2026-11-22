@@ -234,3 +234,60 @@ def best(refs: list[Ref], terms: list[str], k=2, used=None) -> list[Ref]:
             scored.append((s - (0.5 if used and r.key() in used else 0), r))
     scored.sort(key=lambda x: -x[0])
     return [r for _, r in scored[:k]]
+
+
+# ----------------------------------------------------------------------------- automatic reference search
+
+
+def _short(term: str) -> str:
+    """'modified citrus pectin (MCP)' → 'modified citrus pectin'; strips doses and brackets."""
+    t = re.sub(r"\([^)]*\)", "", term or "")
+    t = re.sub(r"\b\d+(\.\d+)?\s*(mg|g|µg|ug|ml|mL)\s*/\s*kg\b", "", t)
+    return re.sub(r"\s+", " ", t).strip(" ,;")
+
+
+def auto_queries(study: dict, markers: list) -> list[tuple[str, int]]:
+    """PubMed searches that cover what a pharmacology/toxicology paper has to cite: the model, the compound, the
+    compound in this or related models, and each measured pathway in the model."""
+    from . import markers_kb as KB
+    model = _short(study.get("model_short") or study.get("model") or "")
+    drug = _short(study.get("drug") or "")
+    organ = (study.get("organ") or "").strip()
+    q = []
+    if model:
+        q.append((f"({model}) AND review[pt]", 5))
+        q.append((f"({model}) AND (rats OR mice)", 4))
+    if drug:
+        q.append((f"({drug}) AND (pharmacology OR mechanism)", 4))
+        if model:
+            q.append((f"({drug}) AND ({model})", 4))
+        q.append((f"({drug}) AND (oxidative stress OR inflammation OR apoptosis)", 4))
+    paths = [k for k in KB.group_markers(list(markers)) if k != "other"]
+    for k in paths:
+        name = KB.PATHWAYS[k]["name"]
+        if model:
+            q.append((f"({model}) AND ({name})", 3))
+        if drug:
+            q.append((f"({drug}) AND ({name})", 2))
+    if organ and model and organ.lower() not in model.lower():
+        q.append((f"({model}) AND {organ} AND histopathology", 2))
+    return [(s, n) for s, n in q if s.strip("() ")]
+
+
+def auto_references(study: dict, markers: list, getter=_get, limit=30) -> list[Ref]:
+    """Run the automatic searches and return up to `limit` unique references (abstracts included)."""
+    import time
+    out, seen = [], set()
+    for query, n in auto_queries(study, markers):
+        if getter is _get:
+            time.sleep(0.8)          # NCBI asks for at most 3 requests a second without an API key
+        try:
+            found = pubmed_search(query, n, getter)
+        except Exception:
+            continue
+        for r in found:
+            if r.key() not in seen and r.title:
+                seen.add(r.key()); out.append(r)
+        if len(out) >= limit:
+            break
+    return out[:limit]

@@ -44,10 +44,10 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: medstatix-v2.1.1
-          name: MedStatix Pro 2.1.1 (Windows)
+          tag_name: medstatix-v2.2.0
+          name: MedStatix Pro 2.2.0 (Windows)
           target_commitish: ${{ github.sha }}
-          body: "MedStatix Pro 2.1.1 – Quick access to the newest tools on the toolbar, next to Recommendations: Full paper (Word + EndNote), Improve images (research images: quality, resolution, dpi), Pro comment (histopathology comment and legend), and a ✨ New tools menu that also holds the folder histopathology report, brush teaching of congestion and the Expert mode switch. Open/save, export, Settings and Language now sit on a second toolbar row, so nothing hides in the overflow. Includes everything in 2.1.0 (full-paper writer, PubMed, EndNote/RIS). Windows installer (MedStatixPro-Setup-2.1.1.exe) and portable ZIP."
+          body: "MedStatix Pro 2.2.0 – Full paper, much improved. Optional Claude writing (your Anthropic API key): Claude writes the Abstract, Highlights, Introduction, Results text, Discussion and Conclusion from your data and references only; numbers not in your data are flagged [check: …], citations come only from your reference list, the Methods stay as built from the data, and an AI-use declaration is added. Automatic PubMed references when your list is short, and a reference list is always written (provisional list in EndNote mode). Template fixes: one Results section from the summary table instead of one per test, per-test tables moved to Supplementary material, a single statistics paragraph, correct number of groups in the Abstract, marker-specific Discussion text, bar charts of medians now show the IQR, no duplicate * / # reference group in legends. Windows installer (MedStatixPro-Setup-2.2.0.exe) and portable ZIP."
           files: |
             dist/installer/*.exe
             dist/MedStatixPro-portable-win64.zip

@@ -249,6 +249,8 @@ def render(spec: GroupFigSpec, ax=None):
                 continue
             m = np.median(v) if spec.center == "median" else v.mean()
             lo_e, hi_e = _err(v, err_kind)
+            if spec.center == "median" and err_kind != "None" and len(v) >= 2:   # a median goes with its IQR, never SD
+                q1, q3 = np.percentile(v, [25, 75]); lo_e, hi_e = m - q1, q3 - m
             top = max(v.max() if show_points else m + hi_e, m + hi_e)
             if plot_type.startswith("Bar"):
                 ax.bar(i, m, width=spec.bar_width, color=mpl.colors.to_rgba(c, spec.fill_alpha if show_points else 0.85),
@@ -314,7 +316,7 @@ def render(spec: GroupFigSpec, ax=None):
         comps = visible_comparisons(spec)
         top_needed = vmax + 0.06 * rng
         if comps and spec.sig_layout == "Symbols above groups":
-            refs = [(spec.ref1 or labels[0], "*")] + ([(spec.ref2, "#")] if spec.ref2 else [])
+            refs = [(spec.ref1 or labels[0], "*")] + ([(spec.ref2, "#")] if spec.ref2 and spec.ref2 != (spec.ref1 or labels[0]) else [])
             marks = {l: [] for l in labels}
             for a, b, p in comps:
                 for ref, sym in refs:
@@ -420,7 +422,7 @@ def auto_caption(spec: GroupFigSpec, lang="en"):
     if lang == "ar":
         what = {"Box + points": "الصندوق يمثل الوسيط والمدى الربيعي", "Violin + points": "شكل الكمان يمثل توزيع القيم مع الوسيط والمدى الربيعي"}.get(
             pt, f"{'الأعمدة' if pt.startswith('Bar') else 'الخط الأفقي'} = {'الوسيط' if center == 'median' else 'المتوسط'}"
-                + (f" ± {err}" if err != "None" else ""))
+                + ("" if err == "None" else " مع المدى الربيعي" if center == "median" else f" ± {err}"))
         s = f"{spec.ylabel} في المجموعات ({len(labels)}). {what}"
         if pt not in ("Bar (no points)", "Mean ± error only"):
             s += "، والنقاط قيم فردية"
@@ -429,7 +431,8 @@ def auto_caption(spec: GroupFigSpec, lang="en"):
             s += f" الاختبار: {spec.test_name}."
         if comps:
             if spec.sig_layout == "Symbols above groups":
-                s += f" * مقارنة بـ {spec.ref1 or labels[0]}" + (f"، # مقارنة بـ {spec.ref2}" if spec.ref2 else "") + "."
+                r1 = spec.ref1 or labels[0]
+                s += f" * مقارنة بـ {r1}" + (f"، # مقارنة بـ {spec.ref2}" if spec.ref2 and spec.ref2 != r1 else "") + "."
             s += f" {cuts}; ns غير دال."
         return s
     if pt == "Box + points":
@@ -437,7 +440,8 @@ def auto_caption(spec: GroupFigSpec, lang="en"):
     elif pt == "Violin + points":
         what = "Violins show the distribution with median and interquartile range"
     else:
-        what = f"{'Bars' if pt.startswith('Bar') else 'Horizontal lines'} show the {center}" + (f" ± {err}" if err != "None" else "")
+        what = f"{'Bars' if pt.startswith('Bar') else 'Horizontal lines'} show the {center}" + (
+            "" if err == "None" else " with interquartile range" if center == "median" else f" ± {err}")
     s = f"{spec.ylabel} across the {len(labels)} groups. {what}"
     if pt not in ("Bar (no points)", "Mean ± error only"):
         s += "; dots are individual values"
@@ -446,7 +450,8 @@ def auto_caption(spec: GroupFigSpec, lang="en"):
         s += f" {spec.test_name[0].upper() + spec.test_name[1:]}."
     if comps:
         if spec.sig_layout == "Symbols above groups":
-            s += f" * versus {spec.ref1 or labels[0]}" + (f"; # versus {spec.ref2}" if spec.ref2 else "") + "."
+            r1 = spec.ref1 or labels[0]
+            s += f" * versus {r1}" + (f"; # versus {spec.ref2}" if spec.ref2 and spec.ref2 != r1 else "") + "."
         if spec.sig_style != "Exact p":
             s += f" {cuts}" + ("; ns, not significant." if spec.show_ns or spec.sig_mode == "All pairs (with ns)" else ".")
     return s

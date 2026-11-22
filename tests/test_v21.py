@@ -51,7 +51,7 @@ def test_build_paper(tmp_path):
     for h in ("Abstract", "1. Introduction", "2. Materials and methods", "2.3. Experimental design", "3. Results",
               "4. Discussion", "5. Conclusion", "Declarations"):
         assert h in txt
-    assert "Bax/Bcl-2" in txt and "{Hassan, 2021}" in txt and "Group 2 (Toxin)" in txt
+    assert "Bax permeabilises" in txt and "{Hassan, 2021}" in txt and "Group 2 (Toxin)" in txt
     assert "Histopathological findings" in txt and "Toxin + Drug 100" in txt
     assert out["prompts"] > 5 and out["cited"] == 1 and os.path.exists(str(tmp_path / "paper_references.ris"))
 

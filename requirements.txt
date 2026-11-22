@@ -10,3 +10,4 @@ pyreadstat>=1.2
 Pillow>=10
 scikit-image>=0.24
 onnxruntime>=1.17
+anthropic>=2.12

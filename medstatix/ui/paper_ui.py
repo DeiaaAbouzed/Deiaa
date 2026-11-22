@@ -7,7 +7,7 @@ import os
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import (QApplication, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton,
-                               QSpinBox, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget)
+                               QCheckBox, QSpinBox, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget)
 
 from ..core.settings import SETTINGS
 from ..report import paper as PP
@@ -38,10 +38,12 @@ class PaperDialog(QDialog):
         self.refs: list[RF.Ref] = [RF.Ref(**d) for d in json.loads(self.qs.value("paper_refs", "[]") or "[]")]
         self.found: list[RF.Ref] = []
         lay = QVBoxLayout(self)
-        note = QLabel(T("Every sentence is built from your data, fixed academic templates and your references — no AI text "
-                        "generation. What only you can write is left as [yellow prompts] in the Word file.",
-                        "كل جملة مبنية من بياناتك وقوالب أكاديمية ثابتة ومراجعك، دون توليد نص بالذكاء الاصطناعي. "
-                        "ما لا يكتبه إلا أنت يُترك كتلميحات [صفراء] في ملف Word."))
+        note = QLabel(T("Templates mode: every sentence is built from your data, fixed academic templates and your references; what "
+                        "only you can write is left as [yellow prompts]. Claude mode (Output tab): the narrative sections are "
+                        "written by Claude from the same data, checked against your numbers and references, and declared.",
+                        "وضع القوالب: كل جملة مبنية من بياناتك وقوالب أكاديمية ثابتة ومراجعك، وما لا يكتبه إلا أنت يُترك كتلميحات "
+                        "[صفراء]. وضع Claude (تبويب الإخراج): يكتب Claude الأقسام السردية من البيانات نفسها، مع مطابقتها "
+                        "بأرقامك ومراجعك، وإقرار باستخدامه."))
         note.setWordWrap(True); note.setObjectName("hint"); lay.addWidget(note)
         tabs = QTabWidget(); lay.addWidget(tabs, 1)
         # study
@@ -78,8 +80,8 @@ class PaperDialog(QDialog):
         # histology + output
         w = QWidget(); f = QFormLayout(w)
         self.histo = QPlainTextEdit(histo_text); self.histo.setPlaceholderText(T("Histopathology findings (filled from the image reader when available)", "نتائج الهستوباثولوجي"))
-        f.addRow(T("Histopathology results", "نتائج الهستو"), self.histo)
-        self.hmeth = QPlainTextEdit(histo_methods); f.addRow(T("Image methods", "طرق الصور"), self.hmeth)
+        self.histo.setMaximumHeight(110); f.addRow(T("Histopathology results", "نتائج الهستو"), self.histo)
+        self.hmeth = QPlainTextEdit(histo_methods); self.hmeth.setMaximumHeight(80); f.addRow(T("Image methods", "طرق الصور"), self.hmeth)
         self.journal = QComboBox(); self.journal.addItem(T("— general —", "— عام —"), "")
         for k, d in JOURNALS.items():
             self.journal.addItem(T(k, d.get("ar", k)), k)
@@ -88,6 +90,34 @@ class PaperDialog(QDialog):
         for k, en in RF.STYLES.items():
             self.style.addItem(en, k)
         f.addRow(T("Citations", "الاستشهادات"), self.style)
+        # writing mode
+        self.mode = QComboBox()
+        self.mode.addItem(T("Templates only (no AI, author prompts left in yellow)", "قوالب فقط (بدون ذكاء اصطناعي، مع تلميحات صفراء)"), "templates")
+        self.mode.addItem(T("Claude writes Abstract, Introduction, Results text, Discussion, Conclusion (AI, disclosed)",
+                            "Claude يكتب الملخص والمقدمة ونص النتائج والمناقشة والخاتمة (ذكاء اصطناعي مع إفصاح)"), "ai")
+        self.mode.setCurrentIndex(1 if self.qs.value("paper_mode", "templates") == "ai" else 0)
+        f.addRow(T("Writing", "طريقة الكتابة"), self.mode)
+        self.key = QLineEdit(str(self.qs.value("anthropic_key", "") or "")); self.key.setEchoMode(QLineEdit.Password)
+        self.key.setPlaceholderText(T("Anthropic API key (sk-ant-…), or set ANTHROPIC_API_KEY", "مفتاح Anthropic API (sk-ant-…)"))
+        f.addRow(T("API key", "مفتاح API"), self.key)
+        from ..report.ai_writer import MODELS
+        self.model = QComboBox()
+        for k, v in MODELS.items():
+            self.model.addItem(v, k)
+        i = self.model.findData(self.qs.value("ai_model", "claude-opus-5-5")); self.model.setCurrentIndex(max(i, 0))
+        f.addRow(T("Model", "النموذج"), self.model)
+        ai_note = QLabel(T("Claude receives only your study data, results and the references (with abstracts). Numbers that are "
+                           "not in your data are flagged [check: …] and citations come only from your reference list. The "
+                           "Methods stay exactly as built from your data. An AI-use declaration is added for the journal. "
+                           "Usage is billed to your Anthropic account (a paper costs well under one US dollar).",
+                           "يستلم Claude بيانات دراستك ونتائجها والمراجع (مع ملخصاتها) فقط. أي رقم غير موجود في بياناتك يُعلَّم "
+                           "[check: …] والاستشهادات من قائمة مراجعك فقط. قسم الطرق يبقى كما بُني من بياناتك. يُضاف إقرار "
+                           "استخدام الذكاء الاصطناعي الذي تطلبه المجلات. التكلفة على حسابك في Anthropic (أقل من دولار للبحث)."))
+        ai_note.setWordWrap(True); ai_note.setObjectName("hint"); f.addRow(ai_note)
+        self.auto_refs = QCheckBox(T("Search PubMed automatically and add references when the list has fewer than 15",
+                                     "ابحث في PubMed تلقائيًا وأضف مراجع إذا كانت القائمة أقل من 15"))
+        self.auto_refs.setChecked(self.qs.value("paper_auto_refs", "true") in (True, "true"))
+        f.addRow(self.auto_refs)
         f.addRow(QLabel(T("EndNote: import the RIS file saved next to the Word file into your library, then in Word press "
                           "EndNote → Update Citations and Bibliography and pick the journal style.",
                           "EndNote: استورد ملف RIS المحفوظ بجوار ملف Word إلى مكتبتك، ثم في Word اضغط EndNote ← "
@@ -164,3 +194,5 @@ class PaperDialog(QDialog):
     def remember(self):
         self.qs.setValue("paper_study", json.dumps(self.study(), ensure_ascii=False))
         self.qs.setValue("paper_refs", json.dumps([r.to_dict() for r in self.refs], ensure_ascii=False))
+        self.qs.setValue("paper_mode", self.mode.currentData()); self.qs.setValue("anthropic_key", self.key.text().strip())
+        self.qs.setValue("ai_model", self.model.currentData()); self.qs.setValue("paper_auto_refs", "true" if self.auto_refs.isChecked() else "false")
