@@ -159,6 +159,9 @@ class MainWindow(QMainWindow):
         self.a_q_comment = self._act("📝  " + ("تعليق احترافي" if A else "Pro comment"), self.quick_comment, "Ctrl+Shift+C",
                                      tip="تعليق هستوباثولوجي احترافي ووصف الصورة (بعد قراءة الصورة)" if A
                                      else "Professional histopathology comment and figure legend (after reading the image)")
+        self.a_q_refs = self._act("📖  " + ("مكتبة المراجع" if A else "Reference library"), self.open_ref_library, "Ctrl+Shift+L",
+                                  tip="مدير مراجع مثل EndNote: PubMed وGoogle Scholar وScopus وZotero وتنسيق ملف Word بنمط المجلة" if A
+                                  else "EndNote-like reference manager: PubMed, Google Scholar, Scopus, Zotero, Word formatting in journal style")
         self.a_q_batch = self._act("🗂  " + ("تقرير هستو لمجلد صور…" if A else "Histopathology report for a folder…"), self.quick_batch)
         self.a_q_cong = self._act("🩸  " + ("تعليم الاحتقان بالفرشاة…" if A else "Teach congestion (brush)…"), self.quick_congestion)
         self.a_q_expert = QAction("🛠  " + ("وضع الخبير" if A else "Expert mode"), self)
@@ -203,7 +206,7 @@ class MainWindow(QMainWindow):
         o.addAction(self._act("🎨  " + tr("restyle"), self.restyle_all))
         o.addAction(self._act("🖼  " + tr("export_all_figs"), self.export_all_figs))
         p = mb.addMenu("📰  " + ("النشر" if SETTINGS.language == "ar" else "Publish"))
-        for x in (self.a_journal, self.a_paper, self.a_ms, self.a_rev, self.a_panel):
+        for x in (self.a_journal, self.a_paper, self.a_q_refs, self.a_ms, self.a_rev, self.a_panel):
             p.addAction(x)
         t = mb.addMenu("🧰  " + ("أدوات" if SETTINGS.language == "ar" else "Tools"))
         for x in (self.a_tmpl, self.a_animal):
@@ -234,13 +237,13 @@ class MainWindow(QMainWindow):
         tb.addAction(self.a_wizard)
         tb.addAction(self.a_recs)
         tb.addSeparator()
-        for a in (self.a_q_paper, self.a_q_images, self.a_q_comment):
+        for a in (self.a_q_paper, self.a_q_refs, self.a_q_images, self.a_q_comment):
             tb.addAction(a)
         A = SETTINGS.language == "ar"
         more = QToolButton(); more.setText("✨  " + ("الجديد" if A else "New tools")); more.setPopupMode(QToolButton.InstantPopup)
         more.setToolTip("كل الإضافات الأخيرة في مكان واحد" if A else "All the latest additions in one place")
         mm = QMenu(more)
-        for a in (self.a_q_paper, self.a_q_images, self.a_q_comment, self.a_q_batch, self.a_q_cong):
+        for a in (self.a_q_paper, self.a_q_refs, self.a_q_images, self.a_q_comment, self.a_q_batch, self.a_q_cong):
             mm.addAction(a)
         mm.addSeparator(); mm.addAction(self.a_q_expert)
         more.setMenu(mm); tb.addWidget(more); self._new_menu_btn = more
@@ -1175,6 +1178,14 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.warning(self, "", self._A(f"PubMed could not be reached ({e}); the paper is written with your own references only.",
                                                       f"تعذر الوصول إلى PubMed ({e})؛ سيُكتب البحث بمراجعك فقط."))
+        if refs:
+            try:
+                from ..refman import formats as RFM
+                from ..refman.library import Library
+                lib = Library()
+                lib.add_many([RFM.from_ref(r) for r in refs], "Paper: " + (st.get("title") or "untitled")[:60]); lib.close()
+            except Exception:       # noqa: BLE001 — the library is a convenience, never block the paper
+                pass
         ai, rep, model = None, {}, ""
         if dlg.mode.currentData() == "ai":
             model = dlg.model.currentData()
@@ -1340,6 +1351,14 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ quick access to the newest tools
     def open_images_tab(self):
         self.tabs.setCurrentWidget(self.figstudio)
+
+    def open_ref_library(self):
+        from .refman_ui import ReferenceLibrary
+        w = getattr(self, "_reflib", None)
+        if w is None:
+            w = self._reflib = ReferenceLibrary(self)
+            w.setAttribute(Qt.WA_DeleteOnClose, False)
+        w.show(); w.raise_(); w.activateWindow()
 
     def quick_comment(self):
         self.tabs.setCurrentWidget(self.histo)

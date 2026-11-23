@@ -44,10 +44,10 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: medstatix-v2.2.0
-          name: MedStatix Pro 2.2.0 (Windows)
+          tag_name: medstatix-v2.3.0
+          name: MedStatix Pro 2.3.0 (Windows)
           target_commitish: ${{ github.sha }}
-          body: "MedStatix Pro 2.2.0 – Full paper, much improved. Optional Claude writing (your Anthropic API key): Claude writes the Abstract, Highlights, Introduction, Results text, Discussion and Conclusion from your data and references only; numbers not in your data are flagged [check: …], citations come only from your reference list, the Methods stay as built from the data, and an AI-use declaration is added. Automatic PubMed references when your list is short, and a reference list is always written (provisional list in EndNote mode). Template fixes: one Results section from the summary table instead of one per test, per-test tables moved to Supplementary material, a single statistics paragraph, correct number of groups in the Abstract, marker-specific Discussion text, bar charts of medians now show the IQR, no duplicate * / # reference group in legends. Windows installer (MedStatixPro-Setup-2.2.0.exe) and portable ZIP."
+          body: "MedStatix Pro 2.3.0 – Reference library in the style of EndNote, plus Zotero. Search PubMed, Scopus (Elsevier API key), OpenAlex and Crossref from inside the library; Google Scholar exports are imported. Import/export RIS, EndNote .enw and XML, MEDLINE, BibTeX and Scopus CSV; import Zotero libraries with their collections. About 70 journal styles (CSL) bundled and 10,000+ downloadable. Format Word paper: temporary citations such as {Hassan, 2021 #12} become formatted citations and a reference list in the chosen journal style. The full-paper writer uses the same styles. Windows installer (MedStatixPro-Setup-2.3.0.exe) and portable ZIP."
           files: |
             dist/installer/*.exe
             dist/MedStatixPro-portable-win64.zip

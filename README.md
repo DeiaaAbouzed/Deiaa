@@ -39,6 +39,22 @@ MedStatix Pro brings together what researchers usually spread across SPSS, Graph
 | Charts | Heatmap, volcano, radar, Kaplan–Meier, forest |
 | Sample size | **G*Power-style a priori / post hoc / sensitivity**, t-tests, proportions, ANOVA, correlation, log-rank (Schoenfeld), diagnostic sensitivity (Buderer), Mead's resource equation for animal studies |
 
+## New in v2.3: Reference library (EndNote-style) and Zotero
+- **📖 Reference library** (toolbar, Ctrl+Shift+L): your own library with groups, duplicates finder, PDF links,
+  edit/preview panes and drag-and-drop import.
+- **Online search** from inside the library: PubMed, Scopus (your Elsevier API key), OpenAlex and Crossref; Google
+  Scholar opens in the browser and its *Import into EndNote* / RIS / BibTeX exports are imported. Add by DOI or PMID.
+- **Import/export**: RIS, EndNote tagged (.enw), EndNote XML, MEDLINE/PubMed, BibTeX, Scopus CSV. **Zotero**: from
+  zotero.sqlite (with collections as groups), Zotero 7's local API or the Zotero web API.
+- **Journal output styles** (Citation Style Language): about 70 bundled (APA, Vancouver/NLM, Harvard, Nature, Elsevier,
+  Springer, Lancet, NEJM and the pharmacology/toxicology journals), any of the 10,000+ CSL styles downloaded by id, or
+  a .csl file.
+- **Format Word paper** (like EndNote's *Update Citations and Bibliography*): write temporary citations such as
+  `{Hassan, 2021}`, `{Hassan, 2021 #12}` or `{#12; #7}` (Copy citation puts them on the clipboard); the app writes a new
+  `…_formatted.docx` with numbered or author-year citations (2020a/2020b), italic/bold/superscript as the style
+  requires, and the reference list under the References heading.
+- The full-paper writer can use any of these styles and saves the paper's references to a library group.
+
 ## New in v2.2: a better full paper, optional Claude writing, automatic references
 - **Writing mode** (Write the full paper → Output tab): *Templates only*, or *Claude* with your Anthropic API key. Claude
   writes Highlights, Abstract, Introduction, Results text, Discussion and Conclusion from your data and references only.

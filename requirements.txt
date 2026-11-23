@@ -11,3 +11,5 @@ Pillow>=10
 scikit-image>=0.24
 onnxruntime>=1.17
 anthropic>=2.12
+citeproc-py>=0.6
+lxml>=5

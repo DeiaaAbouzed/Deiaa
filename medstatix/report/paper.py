@@ -298,7 +298,19 @@ def abstract(st, F, histo_text):
 def _prepare(study, results, refs, style, journal):
     st = dict(DEFAULT_STUDY); st.update({k: v for k, v in study.items() if v not in (None, "")})
     meth_sents, items, F, tests = collect(results)
-    return st, meth_sents, items, F, tests, _p_word(journal), RF.Citer(list(refs), style)
+    return st, meth_sents, items, F, tests, _p_word(journal), make_citer(refs, style)
+
+
+def make_citer(refs, style):
+    """'endnote' / 'vancouver' / 'apa', or 'csl:<style id>' for any journal style of the reference library."""
+    if style and style.startswith("csl:"):
+        from ..refman import formats as FM
+        from ..refman.styles import CslCiter
+        items = []
+        for i, r in enumerate(refs, 1):
+            it = FM.from_ref(r); it["id"] = f"p{i}"; r._csl_id = it["id"]; items.append(it)
+        return CslCiter(items, style[4:])
+    return RF.Citer(list(refs), style)
 
 
 def _results_paragraphs(items, pw):
@@ -441,6 +453,13 @@ def build_paper(path, study: dict, results: list, refs: list = (), style="endnot
                 doc.add_paragraph(b)
         else:
             add_para(doc, "[No references were cited. Add references in the References tab, or let the app search PubMed.]")
+    elif getattr(citer, "html", False):
+        bib = citer.bibliography_html()
+        for b in bib:
+            from ..refman.styles import add_html
+            add_html(doc.add_paragraph(), b)
+        if not bib:
+            add_para(doc, "[No references were cited. Add references in the References tab, or let the app search PubMed.]")
     else:
         bib = citer.bibliography()
         for b in bib:
@@ -481,13 +500,19 @@ def build_paper(path, study: dict, results: list, refs: list = (), style="endnot
             p = doc.add_paragraph(); p.add_run(f"Figure S{n}. ").bold = True
             p.add_run(re.sub(r"\bp ([=<])", f"{pw} \\1", b.caption or ""))
             doc.add_picture(io.BytesIO(fig_to_png_bytes(b.content, dpi=300)), width=Mm(fig_w))
+    if getattr(citer, "html", False):           # journal style: format all citations now that their order is known
+        from ..refman.styles import replace_tokens
+        rendered = citer.render()
+        for p in doc.paragraphs:
+            replace_tokens(p, rendered)
     for sect in doc.sections:
         sect.footer.paragraphs[0].text = ""
     doc.save(path)
     if refs:
         with open(re.sub(r"\.docx$", "", path) + "_references.ris", "w", encoding="utf-8") as fh:
-            fh.write(RF.to_ris(citer.order or refs))
+            fh.write(RF.to_ris([r for r in refs if getattr(r, "_csl_id", None) in citer.order] if getattr(citer, "html", False)
+                               else (citer.order or refs)))
     words = sum(len(p.text.split()) for p in doc.paragraphs)
-    prompts = sum(len(re.findall(r"\[[^\]]+\]", p.text)) for p in doc.paragraphs)
+    prompts = sum(len(re.findall(r"\[[^\]]*[A-Za-z][^\]]*\]", p.text)) for p in doc.paragraphs)
     return {"words": words, "prompts": prompts, "cited": len(citer.order), "tables": len(tabs), "figures": len(figs),
             "supplementary": len(s_tabs) + len(s_figs)}

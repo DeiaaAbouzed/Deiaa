@@ -71,6 +71,7 @@ class PaperDialog(QDialog):
         self.res = QListWidget(); v.addWidget(self.res, 1)
         r = QHBoxLayout()
         for txt, fn in [(T("Add ticked", "أضف المحدد"), self.add_ticked), (T("Import RIS / EndNote export…", "استيراد RIS من EndNote…"), self.import_ris),
+                        (T("📖 Add from the reference library…", "📖 أضف من مكتبة المراجع…"), self.from_library),
                         (T("Remove selected", "حذف المحدد"), self.remove_sel), (T("Save RIS for EndNote…", "حفظ RIS لـ EndNote…"), self.save_ris)]:
             b = QPushButton(txt); b.clicked.connect(fn); r.addWidget(b)
         v.addLayout(r)
@@ -89,6 +90,14 @@ class PaperDialog(QDialog):
         self.style = QComboBox()
         for k, en in RF.STYLES.items():
             self.style.addItem(en, k)
+        self.style.insertSeparator(self.style.count())
+        try:
+            from ..refman.styles import list_styles
+            for sdef in list_styles():          # every journal style of the reference library (CSL)
+                self.style.addItem(T("Journal style: ", "نمط مجلة: ") + sdef["title"], "csl:" + sdef["id"])
+        except Exception:       # noqa: BLE001
+            pass
+        i = self.style.findData(self.qs.value("paper_style", "endnote")); self.style.setCurrentIndex(max(i, 0))
         f.addRow(T("Citations", "الاستشهادات"), self.style)
         # writing mode
         self.mode = QComboBox()
@@ -172,6 +181,18 @@ class PaperDialog(QDialog):
             keys = {r.key() for r in self.refs}
             self.refs += [r for r in new if r.key() not in keys]; self._show_lib()
 
+    def from_library(self):
+        from ..refman import formats as FM
+        from .refman_ui import LibraryPicker
+        d = LibraryPicker(self)
+        if d.exec():
+            keys = {r.key() for r in self.refs}
+            for it in d.chosen():
+                r = FM.to_ref(it)
+                if r.key() not in keys:
+                    self.refs.append(r); keys.add(r.key())
+            self._show_lib()
+
     def remove_sel(self):
         for it in sorted(self.lib.selectedIndexes(), key=lambda i: -i.row()):
             self.refs.pop(it.row())
@@ -194,5 +215,6 @@ class PaperDialog(QDialog):
     def remember(self):
         self.qs.setValue("paper_study", json.dumps(self.study(), ensure_ascii=False))
         self.qs.setValue("paper_refs", json.dumps([r.to_dict() for r in self.refs], ensure_ascii=False))
+        self.qs.setValue("paper_style", self.style.currentData())
         self.qs.setValue("paper_mode", self.mode.currentData()); self.qs.setValue("anthropic_key", self.key.text().strip())
         self.qs.setValue("ai_model", self.model.currentData()); self.qs.setValue("paper_auto_refs", "true" if self.auto_refs.isChecked() else "false")
